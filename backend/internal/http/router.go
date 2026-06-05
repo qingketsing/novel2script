@@ -3,11 +3,15 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/qingketsing/novel2script/backend/internal/app"
 )
+
+const maxUploadBytes = 2 * 1024 * 1024
 
 type errorResponse struct {
 	Error app.AppError `json:"error"`
@@ -18,6 +22,7 @@ func NewRouter(converter app.Converter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("POST /api/convert", handleConvert(converter))
+	mux.HandleFunc("POST /api/convert/upload", handleConvertUpload(converter))
 	return mux
 }
 
@@ -44,15 +49,58 @@ func handleConvert(converter app.Converter) http.HandlerFunc {
 
 		resp, err := converter.Convert(r.Context(), req)
 		if err != nil {
-			var appErr *app.AppError
-			if errors.As(err, &appErr) {
-				writeAppError(w, http.StatusBadRequest, *appErr)
-				return
-			}
-			writeAppError(w, http.StatusInternalServerError, app.AppError{
-				Code:    app.ErrorCodeInternalError,
-				Message: "服务暂时不可用，请稍后重试。",
+			writeConvertError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// handleConvertUpload 读取 multipart 上传文件，并复用转换器完成小说到剧本 YAML 的生成。
+func handleConvertUpload(converter app.Converter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+			writeAppError(w, http.StatusBadRequest, app.AppError{
+				Code:    app.ErrorCodeInvalidInput,
+				Message: "上传文件过大或表单格式不正确。",
 			})
+			return
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			writeAppError(w, http.StatusBadRequest, app.AppError{
+				Code:    app.ErrorCodeInvalidInput,
+				Message: "请上传 .txt 或 .md 小说文件。",
+			})
+			return
+		}
+		defer file.Close()
+
+		inputType, ok := inputTypeFromFilename(header.Filename)
+		if !ok {
+			writeAppError(w, http.StatusBadRequest, app.AppError{
+				Code:    app.ErrorCodeInvalidInput,
+				Message: "当前仅支持 .txt 或 .md 文件。",
+			})
+			return
+		}
+
+		content, appErr, ok := readUploadedNovel(file)
+		if !ok {
+			writeAppError(w, http.StatusBadRequest, appErr)
+			return
+		}
+
+		req := app.ConvertRequest{
+			Title:     strings.TrimSpace(r.FormValue("title")),
+			Content:   content,
+			InputType: inputType,
+		}
+		resp, err := converter.Convert(r.Context(), req)
+		if err != nil {
+			writeConvertError(w, err)
 			return
 		}
 
@@ -82,6 +130,53 @@ func validateConvertRequest(req app.ConvertRequest) (app.AppError, bool) {
 			Message: "当前仅支持 text、txt 或 md 输入类型。",
 		}, false
 	}
+}
+
+func inputTypeFromFilename(filename string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(filename)) {
+	case ".txt":
+		return "txt", true
+	case ".md":
+		return "md", true
+	default:
+		return "", false
+	}
+}
+
+func readUploadedNovel(file io.Reader) (string, app.AppError, bool) {
+	data, err := io.ReadAll(io.LimitReader(file, maxUploadBytes+1))
+	if err != nil {
+		return "", app.AppError{
+			Code:    app.ErrorCodeInvalidInput,
+			Message: "读取上传文件失败。",
+		}, false
+	}
+	if len(data) > maxUploadBytes {
+		return "", app.AppError{
+			Code:    app.ErrorCodeInvalidInput,
+			Message: "上传文件不能超过 2MB。",
+		}, false
+	}
+	content := string(data)
+	if strings.TrimSpace(content) == "" {
+		return "", app.AppError{
+			Code:    app.ErrorCodeInvalidInput,
+			Message: "上传文件内容不能为空。",
+		}, false
+	}
+	return content, app.AppError{}, true
+}
+
+func writeConvertError(w http.ResponseWriter, err error) {
+	var appErr *app.AppError
+	if errors.As(err, &appErr) {
+		writeAppError(w, http.StatusBadRequest, *appErr)
+		return
+	}
+	writeAppError(w, http.StatusInternalServerError, app.AppError{
+		Code:    app.ErrorCodeInternalError,
+		Message: "服务暂时不可用，请稍后重试。",
+	})
 }
 
 // writeAppError 将应用错误包装为统一的 {"error": ...} JSON 结构。
