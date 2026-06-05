@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ErrDeepSeekProviderNotImplemented = errors.New("deepseek provider is not implemented")
+	ErrDeepSeekProviderNotImplemented = ai.ErrDeepSeekProviderNotImplemented
 	ErrUnsupportedAIMode              = errors.New("unsupported ai mode")
 )
 
@@ -18,8 +18,11 @@ func NewProviderFromConfig(cfg config.Config) (ai.Provider, error) {
 	case "mock":
 		return ai.NewMockProvider(), nil
 	case "deepseek":
-		// 暂时返回错误，因为 DeepSeek 提供者尚未实现，先留出接口
-		return nil, ErrDeepSeekProviderNotImplemented
+		return ai.NewDeepSeekProvider(ai.DeepSeekConfig{
+			APIKey:  cfg.DeepSeekAPIKey,
+			BaseURL: cfg.DeepSeekBaseURL,
+			Model:   cfg.DeepSeekModel,
+		})
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedAIMode, cfg.AIMode)
 	}
