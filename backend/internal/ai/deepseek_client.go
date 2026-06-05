@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var (
@@ -20,6 +21,7 @@ type DeepSeekClientConfig struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	Timeout time.Duration
 }
 
 type HTTPDoer interface {
@@ -43,7 +45,11 @@ func NewDeepSeekClient(cfg DeepSeekClientConfig, httpClient HTTPDoer) (*DeepSeek
 		return nil, ErrDeepSeekModelRequired
 	}
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		timeout := cfg.Timeout
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		httpClient = &http.Client{Timeout: timeout}
 	}
 	return &DeepSeekClient{
 		cfg:        cfg,
