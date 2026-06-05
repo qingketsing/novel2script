@@ -70,6 +70,63 @@ func TestConvertEndpointRejectsWrongMethod(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightAllowsLocalFrontend(t *testing.T) {
+	server := httptest.NewServer(NewRouter(stubConverter{}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, server.URL+"/api/convert", nil)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", resp.StatusCode)
+	}
+	assertCORSHeaders(t, resp)
+}
+
+func TestCORSHeadersAreSetOnAPIResponse(t *testing.T) {
+	server := httptest.NewServer(NewRouter(stubConverter{
+		response: app.ConvertResponse{
+			ScreenplayYAML: "schema_version: \"1.0\"\n",
+			ChapterCount:   3,
+			Mode:           "mock",
+		},
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/convert", strings.NewReader(`{
+		"title": "示例小说",
+		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
+		"input_type": "text"
+	}`))
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	assertCORSHeaders(t, resp)
+}
+
 func TestConvertEndpointReturnsConverterResponse(t *testing.T) {
 	server := httptest.NewServer(NewRouter(stubConverter{
 		response: app.ConvertResponse{
@@ -424,6 +481,20 @@ func assertUploadError(t *testing.T, resp *http.Response, wantCode string) {
 	}
 	if body.Error.Code != wantCode {
 		t.Fatalf("expected error code %s, got %+v", wantCode, body)
+	}
+}
+
+func assertCORSHeaders(t *testing.T, resp *http.Response) {
+	t.Helper()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Fatalf("unexpected allow origin: %q", got)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Methods"); !strings.Contains(got, "POST") || !strings.Contains(got, "OPTIONS") {
+		t.Fatalf("unexpected allow methods: %q", got)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Content-Type") {
+		t.Fatalf("unexpected allow headers: %q", got)
 	}
 }
 

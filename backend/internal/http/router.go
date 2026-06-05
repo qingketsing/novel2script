@@ -12,6 +12,7 @@ import (
 )
 
 const maxUploadBytes = 2 * 1024 * 1024
+const localFrontendOrigin = "http://localhost:5173"
 
 type errorResponse struct {
 	Error app.AppError `json:"error"`
@@ -23,7 +24,24 @@ func NewRouter(converter app.Converter) http.Handler {
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("POST /api/convert", handleConvert(converter))
 	mux.HandleFunc("POST /api/convert/upload", handleConvertUpload(converter))
-	return mux
+	return withCORS(mux)
+}
+
+// withCORS 允许本地前端开发服务器调用后端 API，并处理浏览器预检请求。
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Origin") == localFrontendOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", localFrontendOrigin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Vary", "Origin")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // handleHealth 提供轻量健康检查，供本地启动和部署探活使用。
