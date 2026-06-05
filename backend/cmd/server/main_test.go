@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -10,10 +11,11 @@ import (
 	"testing"
 
 	"github.com/qingketsing/novel2script/backend/internal/app"
+	"github.com/qingketsing/novel2script/backend/internal/config"
 )
 
 func TestNewHandlerWiresMockDomainConverter(t *testing.T) {
-	server := httptest.NewServer(newHandler())
+	server := httptest.NewServer(mustNewHandler(t, config.Config{AIMode: "mock"}))
 	defer server.Close()
 
 	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
@@ -55,7 +57,7 @@ func TestNewHandlerWiresMockDomainConverter(t *testing.T) {
 }
 
 func TestNewHandlerConvertsUploadedMarkdownNovel(t *testing.T) {
-	server := httptest.NewServer(newHandler())
+	server := httptest.NewServer(mustNewHandler(t, config.Config{AIMode: "mock"}))
 	defer server.Close()
 
 	var requestBody bytes.Buffer
@@ -87,6 +89,24 @@ func TestNewHandlerConvertsUploadedMarkdownNovel(t *testing.T) {
 	defer resp.Body.Close()
 
 	assertDemoConvertResponse(t, resp)
+}
+
+func TestNewHandlerRejectsUnimplementedDeepSeekProvider(t *testing.T) {
+	_, err := newHandler(config.Config{AIMode: "deepseek"})
+
+	if !errors.Is(err, app.ErrDeepSeekProviderNotImplemented) {
+		t.Fatalf("error = %v, want %v", err, app.ErrDeepSeekProviderNotImplemented)
+	}
+}
+
+func mustNewHandler(t *testing.T, cfg config.Config) http.Handler {
+	t.Helper()
+
+	handler, err := newHandler(cfg)
+	if err != nil {
+		t.Fatalf("newHandler() error = %v", err)
+	}
+	return handler
 }
 
 func assertDemoConvertResponse(t *testing.T, resp *http.Response) {
