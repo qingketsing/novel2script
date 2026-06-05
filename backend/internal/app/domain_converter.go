@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 
+	"github.com/qingketsing/novel2script/backend/internal/ai"
 	"github.com/qingketsing/novel2script/backend/internal/exporter"
-	"github.com/qingketsing/novel2script/backend/internal/generator"
 	"github.com/qingketsing/novel2script/backend/internal/parser"
 	"github.com/qingketsing/novel2script/backend/internal/validation"
 )
@@ -14,13 +14,19 @@ const (
 	ErrCodeInsufficientChapters = validation.CodeInsufficientChapters
 )
 
-type MockDomainConverter struct{}
-
-func NewMockDomainConverter() Converter {
-	return MockDomainConverter{}
+type DomainConverter struct {
+	provider ai.Provider
 }
 
-func (MockDomainConverter) Convert(_ context.Context, req ConvertRequest) (ConvertResponse, error) {
+func NewMockDomainConverter() Converter {
+	return NewDomainConverter(ai.NewMockProvider())
+}
+
+func NewDomainConverter(provider ai.Provider) Converter {
+	return DomainConverter{provider: provider}
+}
+
+func (c DomainConverter) Convert(ctx context.Context, req ConvertRequest) (ConvertResponse, error) {
 	if err := validation.ValidateInput(req.Content); err != nil {
 		return ConvertResponse{}, NewError(err.Code, err.Message)
 	}
@@ -33,7 +39,11 @@ func (MockDomainConverter) Convert(_ context.Context, req ConvertRequest) (Conve
 		return ConvertResponse{}, NewError(err.Code, err.Message)
 	}
 
-	screenplay := generator.GenerateMockScreenplay(novel)
+	output, err := c.provider.GenerateScreenplay(ctx, ai.GenerateInput{Novel: novel})
+	if err != nil {
+		return ConvertResponse{}, err
+	}
+	screenplay := output.Screenplay
 
 	return ConvertResponse{
 		ScreenplayYAML: exporter.ExportYAML(screenplay),
