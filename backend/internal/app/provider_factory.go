@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	ErrDeepSeekProviderNotImplemented = ai.ErrDeepSeekProviderNotImplemented
-	ErrUnsupportedAIMode              = errors.New("unsupported ai mode")
+	ErrUnsupportedAIMode = errors.New("unsupported ai mode")
 )
 
 func NewProviderFromConfig(cfg config.Config) (ai.Provider, error) {

@@ -6,10 +6,9 @@ import (
 )
 
 var (
-	ErrDeepSeekAPIKeyRequired         = errors.New("deepseek api key is required")
-	ErrDeepSeekBaseURLRequired        = errors.New("deepseek base url is required")
-	ErrDeepSeekModelRequired          = errors.New("deepseek model is required")
-	ErrDeepSeekProviderNotImplemented = errors.New("deepseek provider is not implemented")
+	ErrDeepSeekAPIKeyRequired  = errors.New("deepseek api key is required")
+	ErrDeepSeekBaseURLRequired = errors.New("deepseek base url is required")
+	ErrDeepSeekModelRequired   = errors.New("deepseek model is required")
 )
 
 type DeepSeekConfig struct {
@@ -19,7 +18,8 @@ type DeepSeekConfig struct {
 }
 
 type DeepSeekProvider struct {
-	cfg DeepSeekConfig
+	cfg           DeepSeekConfig
+	yamlGenerator deepSeekYAMLGenerator
 }
 
 func NewDeepSeekProvider(cfg DeepSeekConfig) (Provider, error) {
@@ -32,9 +32,35 @@ func NewDeepSeekProvider(cfg DeepSeekConfig) (Provider, error) {
 	if cfg.Model == "" {
 		return nil, ErrDeepSeekModelRequired
 	}
-	return DeepSeekProvider{cfg: cfg}, nil
+
+	client, err := NewDeepSeekClient(DeepSeekClientConfig{
+		APIKey:  cfg.APIKey,
+		BaseURL: cfg.BaseURL,
+		Model:   cfg.Model,
+	}, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return DeepSeekProvider{
+		cfg:           cfg,
+		yamlGenerator: client,
+	}, nil
 }
 
-func (p DeepSeekProvider) GenerateScreenplay(context.Context, GenerateInput) (GenerateOutput, error) {
-	return GenerateOutput{}, ErrDeepSeekProviderNotImplemented
+func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input GenerateInput) (GenerateOutput, error) {
+	prompt := BuildScreenplayPrompt(input.Novel)
+	rawYAML, err := p.yamlGenerator.GenerateYAML(ctx, prompt)
+	if err != nil {
+		return GenerateOutput{}, err
+	}
+	if err := ValidateScreenplayYAML(rawYAML); err != nil {
+		return GenerateOutput{}, err
+	}
+
+	return GenerateOutput{RawYAML: rawYAML}, nil
+}
+
+type deepSeekYAMLGenerator interface {
+	GenerateYAML(ctx context.Context, prompt string) (string, error)
 }
