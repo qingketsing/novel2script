@@ -19,6 +19,22 @@ func TestAppErrorImplementsError(t *testing.T) {
 	}
 }
 
+func TestErrorCodeConstants(t *testing.T) {
+	tests := map[string]string{
+		"invalid json":   ErrorCodeInvalidJSON,
+		"invalid input":  ErrorCodeInvalidInput,
+		"internal error": ErrorCodeInternalError,
+	}
+
+	for name, code := range tests {
+		t.Run(name, func(t *testing.T) {
+			if code == "" {
+				t.Fatal("expected non-empty error code")
+			}
+		})
+	}
+}
+
 func TestPlaceholderConverterReturnsStableMockResponse(t *testing.T) {
 	converter := NewPlaceholderConverter()
 

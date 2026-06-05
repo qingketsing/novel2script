@@ -33,6 +33,39 @@ func TestHealthEndpoint(t *testing.T) {
 	if body["status"] != "ok" {
 		t.Fatalf("expected ok status, got %q", body["status"])
 	}
+	if got := resp.Header.Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Fatalf("expected json content type, got %q", got)
+	}
+}
+
+func TestUnknownRouteReturnsNotFound(t *testing.T) {
+	server := httptest.NewServer(NewRouter(stubConverter{}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/missing")
+	if err != nil {
+		t.Fatalf("GET /missing failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestConvertEndpointRejectsWrongMethod(t *testing.T) {
+	server := httptest.NewServer(NewRouter(stubConverter{}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/api/convert")
+	if err != nil {
+		t.Fatalf("GET /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", resp.StatusCode)
+	}
 }
 
 func TestConvertEndpointReturnsConverterResponse(t *testing.T) {
@@ -65,6 +98,9 @@ func TestConvertEndpointReturnsConverterResponse(t *testing.T) {
 	}
 	if body.ScreenplayYAML == "" || body.ChapterCount != 3 || body.Mode != "mock" {
 		t.Fatalf("unexpected response: %+v", body)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Fatalf("expected json content type, got %q", got)
 	}
 }
 
@@ -120,6 +156,68 @@ func TestConvertEndpointRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestConvertEndpointRejectsEmptyContent(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
+		"title": "示例小说",
+		"content": "   ",
+		"input_type": "text"
+	}`))
+	if err != nil {
+		t.Fatalf("POST /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	if converter.called {
+		t.Fatal("converter should not be called for invalid input")
+	}
+
+	var body errorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error.Code != app.ErrorCodeInvalidInput {
+		t.Fatalf("unexpected error response: %+v", body)
+	}
+}
+
+func TestConvertEndpointRejectsUnsupportedInputType(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
+		"title": "示例小说",
+		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
+		"input_type": "pdf"
+	}`))
+	if err != nil {
+		t.Fatalf("POST /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	if converter.called {
+		t.Fatal("converter should not be called for invalid input")
+	}
+
+	var body errorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error.Code != app.ErrorCodeInvalidInput {
+		t.Fatalf("unexpected error response: %+v", body)
+	}
+}
+
 type stubConverter struct {
 	response app.ConvertResponse
 	err      error
@@ -133,4 +231,17 @@ func (s stubConverter) Convert(_ context.Context, _ app.ConvertRequest) (app.Con
 		return app.ConvertResponse{}, errors.New("unexpected stub call")
 	}
 	return s.response, nil
+}
+
+type recordingConverter struct {
+	called bool
+}
+
+func (r *recordingConverter) Convert(_ context.Context, _ app.ConvertRequest) (app.ConvertResponse, error) {
+	r.called = true
+	return app.ConvertResponse{
+		ScreenplayYAML: "schema_version: \"1.0\"\n",
+		ChapterCount:   3,
+		Mode:           "mock",
+	}, nil
 }

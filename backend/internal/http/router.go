@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/qingketsing/novel2script/backend/internal/app"
 )
@@ -28,9 +29,13 @@ func handleConvert(converter app.Converter) http.HandlerFunc {
 		var req app.ConvertRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeAppError(w, http.StatusBadRequest, app.AppError{
-				Code:    "INVALID_JSON",
+				Code:    app.ErrorCodeInvalidJSON,
 				Message: "请求体必须是合法 JSON。",
 			})
+			return
+		}
+		if appErr, ok := validateConvertRequest(req); !ok {
+			writeAppError(w, http.StatusBadRequest, appErr)
 			return
 		}
 
@@ -42,13 +47,36 @@ func handleConvert(converter app.Converter) http.HandlerFunc {
 				return
 			}
 			writeAppError(w, http.StatusInternalServerError, app.AppError{
-				Code:    "INTERNAL_ERROR",
+				Code:    app.ErrorCodeInternalError,
 				Message: "服务暂时不可用，请稍后重试。",
 			})
 			return
 		}
 
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+func validateConvertRequest(req app.ConvertRequest) (app.AppError, bool) {
+	if strings.TrimSpace(req.Content) == "" {
+		return app.AppError{
+			Code:    app.ErrorCodeInvalidInput,
+			Message: "小说正文不能为空，请上传文件或粘贴正文。",
+		}, false
+	}
+
+	inputType := strings.TrimSpace(strings.ToLower(req.InputType))
+	if inputType == "" {
+		inputType = "text"
+	}
+	switch inputType {
+	case "text", "txt", "md":
+		return app.AppError{}, true
+	default:
+		return app.AppError{
+			Code:    app.ErrorCodeInvalidInput,
+			Message: "当前仅支持 text、txt 或 md 输入类型。",
+		}, false
 	}
 }
 
