@@ -1,0 +1,120 @@
+import * as Label from "@radix-ui/react-label";
+import type { ChangeEvent, DragEvent } from "react";
+import { useId, useState } from "react";
+
+const ACCEPTED_FILE_TYPES = [".txt", ".md"] as const;
+
+type FileDropzoneProps = {
+  file: File | null;
+  onFileChange: (file: File | null, error?: string) => void;
+};
+
+export function FileDropzone({ file, onFileChange }: FileDropzoneProps) {
+  const inputId = useId();
+  const [isDragging, setIsDragging] = useState(false);
+
+  function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const selected = event.target.files?.[0] ?? null;
+    applyFile(selected, event.currentTarget);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragging(false);
+    applyFile(event.dataTransfer.files[0] ?? null);
+  }
+
+  function applyFile(selected: File | null, input?: HTMLInputElement) {
+    if (!selected) {
+      onFileChange(null);
+      return;
+    }
+
+    if (!isAcceptedFile(selected.name)) {
+      if (input) input.value = "";
+      onFileChange(null, "当前仅支持 .txt 或 .md 文件。");
+      return;
+    }
+
+    onFileChange(selected);
+  }
+
+  function removeFile() {
+    onFileChange(null);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <span className="field-label">上传小说文件</span>
+      </div>
+      <Label.Root
+        className={dropzoneClassName(isDragging)}
+        htmlFor={inputId}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+      >
+        <input
+          id={inputId}
+          className="sr-only"
+          type="file"
+          accept={ACCEPTED_FILE_TYPES.join(",")}
+          onChange={handleFileInputChange}
+        />
+        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg font-semibold text-accent">
+          +
+        </span>
+        <span className="mt-3 text-sm font-semibold text-zinc-900">拖拽 .txt / .md 到这里，或点击选择文件</span>
+        <span className="mt-1 max-w-sm text-sm leading-6 text-zinc-500">
+          仅支持单个小说文本文件
+        </span>
+      </Label.Root>
+
+      {file ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-3 text-sm shadow-sm shadow-zinc-200/60 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="truncate font-medium text-zinc-900">{file.name}</p>
+            <p className="mt-1 text-zinc-500">
+              {formatFileSize(file.size)} / {file.type || file.name.split(".").pop()?.toUpperCase() || "文本文件"}
+            </p>
+          </div>
+          <button className="secondary-button shrink-0" type="button" onClick={removeFile}>
+            移除文件
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function dropzoneClassName(isDragging: boolean): string {
+  const base =
+    "flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-5 py-8 text-center outline-none transition";
+
+  return isDragging
+    ? `${base} border-accent bg-blue-50 ring-4 ring-blue-100`
+    : `${base} border-zinc-300 bg-zinc-50 hover:border-zinc-400 hover:bg-white focus-visible:border-accent focus-visible:ring-4 focus-visible:ring-blue-100`;
+}
+
+function isAcceptedFile(filename: string): boolean {
+  return ACCEPTED_FILE_TYPES.some((extension) => filename.toLowerCase().endsWith(extension));
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

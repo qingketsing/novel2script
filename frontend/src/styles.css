@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: #fafafa;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .field-label {
+    @apply mb-1.5 block text-sm font-medium text-zinc-700;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-zinc-950 outline-none transition focus:border-accent focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-zinc-100;
+  }
+
+  .primary-button {
+    @apply w-full rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-400;
+  }
+
+  .secondary-button {
+    @apply rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 transition hover:border-zinc-400 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:border-zinc-200 disabled:text-zinc-400;
+  }
+
+  .error-box {
+    @apply rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800;
+  }
+
+  .yaml-panel {
+    @apply min-h-[480px] overflow-auto whitespace-pre-wrap rounded-lg border border-zinc-200 bg-zinc-950 p-4 font-mono text-sm leading-6 text-zinc-100;
+  }
+}
