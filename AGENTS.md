@@ -136,12 +136,17 @@ Every AI coding agent must follow these rules:
 13. Do not silently change public API contracts.
 14. If a required command cannot run, explain why in the final report and PR description.
 15. If the task is unclear, implement the smallest safe version and document assumptions.
+16. Keep commits as small as possible. Each commit should represent one focused step, such as one test group, one endpoint, one validation rule, or one small refactor.
+17. Avoid commits with hundreds of changed lines. If a task naturally grows large, split it into multiple small commits before pushing.
+18. Prefer TDD-sized commits when coding: failing test first, minimal implementation second, cleanup or comments third.
 
 ---
 
 ## 6. PR Rules
 
 Each PR must solve exactly one clear problem.
+
+Each PR may contain multiple commits, but every commit should stay small and reviewable. Do not squash unrelated steps into one large commit. A reviewer should be able to understand each commit independently.
 
 A PR must include:
 
