@@ -13,6 +13,7 @@ type GenerateInput struct {
 
 type GenerateOutput struct {
 	Screenplay domain.Screenplay
+	RawYAML    string
 }
 
 type Provider interface {

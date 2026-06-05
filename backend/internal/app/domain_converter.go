@@ -43,6 +43,13 @@ func (c DomainConverter) Convert(ctx context.Context, req ConvertRequest) (Conve
 	if err != nil {
 		return ConvertResponse{}, err
 	}
+	if output.RawYAML != "" {
+		return ConvertResponse{
+			ScreenplayYAML: output.RawYAML,
+			ChapterCount:   len(novel.Chapters),
+			Mode:           "api",
+		}, nil
+	}
 	screenplay := output.Screenplay
 
 	return ConvertResponse{
