@@ -113,16 +113,44 @@ func TestDomainConverterUsesProviderOutput(t *testing.T) {
 	}
 }
 
+func TestDomainConverterReturnsProviderRawYAML(t *testing.T) {
+	const rawYAML = "schema_version: \"1.0\"\nmetadata:\n  generated_by:\n    mode: \"api\"\n"
+	provider := recordingProvider{rawYAML: rawYAML}
+	converter := NewDomainConverter(&provider)
+
+	resp, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+	if err != nil {
+		t.Fatalf("Convert returned error: %v", err)
+	}
+
+	if !provider.called {
+		t.Fatal("expected provider to be called")
+	}
+	if resp.ScreenplayYAML != rawYAML {
+		t.Fatalf("expected raw YAML to be returned unchanged:\n%s", resp.ScreenplayYAML)
+	}
+	if resp.ChapterCount != 3 {
+		t.Fatalf("expected 3 chapters, got %d", resp.ChapterCount)
+	}
+	if resp.Mode != "api" {
+		t.Fatalf("expected api mode for raw YAML output, got %q", resp.Mode)
+	}
+}
+
 type recordingProvider struct {
 	called     bool
 	input      ai.GenerateInput
 	screenplay domain.Screenplay
+	rawYAML    string
 }
 
 func (p *recordingProvider) GenerateScreenplay(_ context.Context, input ai.GenerateInput) (ai.GenerateOutput, error) {
 	p.called = true
 	p.input = input
-	return ai.GenerateOutput{Screenplay: p.screenplay}, nil
+	return ai.GenerateOutput{Screenplay: p.screenplay, RawYAML: p.rawYAML}, nil
 }
 
 const sampleConvertNovel = `# 第一章 雨夜来信
