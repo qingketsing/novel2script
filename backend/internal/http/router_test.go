@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -218,6 +220,140 @@ func TestConvertEndpointRejectsUnsupportedInputType(t *testing.T) {
 	}
 }
 
+func TestConvertUploadEndpointReturnsConverterResponse(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.md", sampleUploadNovel, "雨夜来信")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if !converter.called {
+		t.Fatal("expected converter to be called")
+	}
+	if converter.request.Title != "雨夜来信" {
+		t.Fatalf("unexpected title: %q", converter.request.Title)
+	}
+	if converter.request.InputType != "md" {
+		t.Fatalf("unexpected input type: %q", converter.request.InputType)
+	}
+	if !strings.Contains(converter.request.Content, "第一章") {
+		t.Fatalf("expected uploaded content, got %q", converter.request.Content)
+	}
+
+	var body app.ConvertResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ChapterCount != 3 || body.Mode != "mock" {
+		t.Fatalf("unexpected response: %+v", body)
+	}
+}
+
+func TestConvertUploadEndpointRejectsMissingFile(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("title", "雨夜来信"); err != nil {
+		t.Fatalf("write field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/convert/upload", &body)
+	if err != nil {
+		t.Fatalf("create request: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	assertUploadError(t, resp, app.ErrorCodeInvalidInput)
+	if converter.called {
+		t.Fatal("converter should not be called for missing file")
+	}
+}
+
+func TestConvertUploadEndpointRejectsEmptyFile(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.txt", "", "空文件")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	assertUploadError(t, resp, app.ErrorCodeInvalidInput)
+	if converter.called {
+		t.Fatal("converter should not be called for empty file")
+	}
+}
+
+func TestConvertUploadEndpointRejectsUnsupportedFileType(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.pdf", sampleUploadNovel, "雨夜来信")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	assertUploadError(t, resp, app.ErrorCodeInvalidInput)
+	if converter.called {
+		t.Fatal("converter should not be called for unsupported file type")
+	}
+}
+
+func TestConvertUploadEndpointRejectsOversizedFile(t *testing.T) {
+	converter := &recordingConverter{}
+	server := httptest.NewServer(NewRouter(converter))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.txt", strings.Repeat("a", maxUploadBytes+1), "大文件")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	assertUploadError(t, resp, app.ErrorCodeInvalidInput)
+	if converter.called {
+		t.Fatal("converter should not be called for oversized file")
+	}
+}
+
+func TestConvertUploadEndpointReturnsChapterValidationError(t *testing.T) {
+	server := httptest.NewServer(NewRouter(stubConverter{
+		err: app.NewError("INSUFFICIENT_CHAPTERS", "至少需要 3 个章节。"),
+	}))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.txt", "第一章\n只有一章", "短篇")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	assertUploadError(t, resp, "INSUFFICIENT_CHAPTERS")
+}
+
 type stubConverter struct {
 	response app.ConvertResponse
 	err      error
@@ -234,14 +370,68 @@ func (s stubConverter) Convert(_ context.Context, _ app.ConvertRequest) (app.Con
 }
 
 type recordingConverter struct {
-	called bool
+	called  bool
+	request app.ConvertRequest
 }
 
-func (r *recordingConverter) Convert(_ context.Context, _ app.ConvertRequest) (app.ConvertResponse, error) {
+func (r *recordingConverter) Convert(_ context.Context, req app.ConvertRequest) (app.ConvertResponse, error) {
 	r.called = true
+	r.request = req
 	return app.ConvertResponse{
 		ScreenplayYAML: "schema_version: \"1.0\"\n",
 		ChapterCount:   3,
 		Mode:           "mock",
 	}, nil
 }
+
+func postUpload(url, filename, content, title string) (*http.Response, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if title != "" {
+		if err := writer.WriteField("title", title); err != nil {
+			return nil, err
+		}
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := part.Write([]byte(content)); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, &body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return http.DefaultClient.Do(req)
+}
+
+func assertUploadError(t *testing.T, resp *http.Response, wantCode string) {
+	t.Helper()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+
+	var body errorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Error.Code != wantCode {
+		t.Fatalf("expected error code %s, got %+v", wantCode, body)
+	}
+}
+
+const sampleUploadNovel = `# 第一章 雨夜来信
+林舟在雨夜收到一封没有署名的信。
+
+# 第二章 旧书店
+林舟来到旧书店，寻找姐姐留下的线索。
+
+# 第三章 街灯
+街灯忽明忽暗，线索指向城市另一端。`
