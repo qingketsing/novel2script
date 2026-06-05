@@ -82,6 +82,7 @@ func extractMockCharacters(novel domain.Novel) []domain.Character {
 func firstLikelyName(novel domain.Novel) string {
 	for _, chapter := range novel.Chapters {
 		for _, candidate := range chineseNamePattern.FindAllString(chapter.Content, -1) {
+			candidate = normalizeMockNameCandidate(candidate)
 			if isLikelyChapterWord(candidate) {
 				continue
 			}
@@ -89,6 +90,24 @@ func firstLikelyName(novel domain.Novel) string {
 		}
 	}
 	return ""
+}
+
+func normalizeMockNameCandidate(value string) string {
+	runes := []rune(value)
+	if len(runes) == 3 && isLikelySentenceConnector(runes[2]) {
+		return string(runes[:2])
+	}
+	return value
+}
+
+func isLikelySentenceConnector(value rune) bool {
+	connectors := []rune{'在', '到', '将', '把', '被', '从', '向', '和', '与'}
+	for _, connector := range connectors {
+		if value == connector {
+			return true
+		}
+	}
+	return false
 }
 
 func isLikelyChapterWord(value string) bool {
