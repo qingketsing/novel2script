@@ -9,6 +9,7 @@ import (
 	httpapi "github.com/qingketsing/novel2script/backend/internal/http"
 )
 
+// main 组装配置、路由和占位转换器，启动后端 HTTP 服务。
 func main() {
 	cfg := config.Load()
 	router := httpapi.NewRouter(app.NewPlaceholderConverter())

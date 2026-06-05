@@ -13,6 +13,7 @@ type AppError struct {
 	Message string `json:"message"`
 }
 
+// NewError 创建应用层错误，供 HTTP 层转换为统一 JSON 错误响应。
 func NewError(code, message string) error {
 	return &AppError{
 		Code:    code,
@@ -20,6 +21,7 @@ func NewError(code, message string) error {
 	}
 }
 
+// Error 返回带错误码的可读错误文本，便于日志和测试断言。
 func (e *AppError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }

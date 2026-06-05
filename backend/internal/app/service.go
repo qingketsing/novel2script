@@ -14,9 +14,8 @@ type ConvertResponse struct {
 	Mode           string `json:"mode"`
 }
 
-// Converter is the boundary between the HTTP API layer and the domain pipeline.
-// Implementations may parse novel input, generate mock screenplay YAML, or later
-// delegate to a real AI provider without changing the HTTP contract.
+// Converter 定义 HTTP API 层和领域管线之间的边界。
+// 后续实现可以解析小说、生成 mock 剧本 YAML，或在不改变 HTTP 契约的前提下接入真实 AI provider。
 type Converter interface {
 	Convert(ctx context.Context, req ConvertRequest) (ConvertResponse, error)
 }

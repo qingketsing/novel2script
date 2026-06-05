@@ -13,6 +13,7 @@ type errorResponse struct {
 	Error app.AppError `json:"error"`
 }
 
+// NewRouter 注册后端 MVP 所需的 HTTP 路由，并把转换能力注入到 API 层。
 func NewRouter(converter app.Converter) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", handleHealth)
@@ -20,10 +21,12 @@ func NewRouter(converter app.Converter) http.Handler {
 	return mux
 }
 
+// handleHealth 提供轻量健康检查，供本地启动和部署探活使用。
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleConvert 负责请求解析、入参校验、调用转换器，并统一输出 JSON 响应。
 func handleConvert(converter app.Converter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req app.ConvertRequest
@@ -57,6 +60,7 @@ func handleConvert(converter app.Converter) http.HandlerFunc {
 	}
 }
 
+// validateConvertRequest 只做 HTTP 请求级校验，章节数量等业务校验留给领域管线处理。
 func validateConvertRequest(req app.ConvertRequest) (app.AppError, bool) {
 	if strings.TrimSpace(req.Content) == "" {
 		return app.AppError{
@@ -80,10 +84,12 @@ func validateConvertRequest(req app.ConvertRequest) (app.AppError, bool) {
 	}
 }
 
+// writeAppError 将应用错误包装为统一的 {"error": ...} JSON 结构。
 func writeAppError(w http.ResponseWriter, status int, appErr app.AppError) {
 	writeJSON(w, status, errorResponse{Error: appErr})
 }
 
+// writeJSON 统一设置 JSON 响应头和状态码，避免各 handler 重复处理。
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
