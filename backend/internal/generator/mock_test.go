@@ -25,6 +25,9 @@ func TestMockGeneratorIsStable(t *testing.T) {
 	if first.Characters[0].ID != "char_001" {
 		t.Fatalf("unexpected first character id: %q", first.Characters[0].ID)
 	}
+	if first.Characters[0].Name != "林舟" {
+		t.Fatalf("expected character name 林舟, got %q", first.Characters[0].Name)
+	}
 	if len(first.Acts) != 1 || len(first.Acts[0].Scenes) != 3 {
 		t.Fatalf("expected one act with 3 scenes, got %+v", first.Acts)
 	}
