@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/qingketsing/novel2script/backend/internal/ai"
 	"github.com/qingketsing/novel2script/backend/internal/app"
 	"github.com/qingketsing/novel2script/backend/internal/config"
 )
@@ -91,11 +92,27 @@ func TestNewHandlerConvertsUploadedMarkdownNovel(t *testing.T) {
 	assertDemoConvertResponse(t, resp)
 }
 
-func TestNewHandlerRejectsUnimplementedDeepSeekProvider(t *testing.T) {
+func TestNewHandlerRejectsMissingDeepSeekAPIKey(t *testing.T) {
 	_, err := newHandler(config.Config{AIMode: "deepseek"})
 
-	if !errors.Is(err, app.ErrDeepSeekProviderNotImplemented) {
-		t.Fatalf("error = %v, want %v", err, app.ErrDeepSeekProviderNotImplemented)
+	if !errors.Is(err, ai.ErrDeepSeekAPIKeyRequired) {
+		t.Fatalf("error = %v, want %v", err, ai.ErrDeepSeekAPIKeyRequired)
+	}
+}
+
+func TestNewHandlerWiresConfiguredDeepSeekProvider(t *testing.T) {
+	handler, err := newHandler(config.Config{
+		AIMode:          "deepseek",
+		DeepSeekAPIKey:  "test-api-key",
+		DeepSeekBaseURL: "https://api.deepseek.com",
+		DeepSeekModel:   "deepseek-v4",
+	})
+
+	if err != nil {
+		t.Fatalf("newHandler() error = %v", err)
+	}
+	if handler == nil {
+		t.Fatal("handler is nil, want configured handler")
 	}
 }
 
