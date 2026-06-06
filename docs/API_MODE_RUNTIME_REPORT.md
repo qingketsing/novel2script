@@ -83,6 +83,9 @@ http request completed
 | case | chapters | content_length | prompt_length | timeout_ms | duration_ms | mode | yaml_length | fallback | repair | notes |
 | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- | --- | --- |
 | N17 6 chapters long | 6 / 6 | 10822 | 14073 | 134000 | 106630 | api | 25519 | no | no | 长文本超过 60 秒后仍成功返回，验证 Nginx API 代理超时修复生效。 |
+| 3chapters-short | 3 / 3 | 1966 | 4358 | 83000 | 22067 | api | 7196 | no | no | 真实前端链路通过，未出现 code fence。 |
+| 5chapters-medium | 5 / 5 | 8638 | 11684 | 119000 | 58556 | api | 17184 | no | no | 真实前端链路通过，耗时接近 60 秒但仍成功。 |
+| 6chapters-long | 6 / 6 | 10822 | 14082 | 134000 | 110269 | api | 21004 | no | no | 真实前端链路通过，长文本超过 60 秒风险区后仍成功。 |
 
 ## 建议后续补充样例
 
