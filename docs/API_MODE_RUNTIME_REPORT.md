@@ -44,7 +44,9 @@ AI_FALLBACK_TO_MOCK=true
 | `mode` | 响应模式，真实 API 成功应为 `api`。 |
 | `yaml_length` | 后端日志中的 YAML 长度。 |
 | `fallback` | 是否出现 `convert fallback activated`。 |
+| `fallback_duration_ms` | 如果触发 fallback，mock fallback 完成耗时。 |
 | `repair` | 是否出现 `deepseek yaml repair succeeded`。 |
+| `repair_duration_ms` | 如果触发 YAML repair，repair 调用和校验耗时。 |
 | `notes` | 其他观察，例如是否超过 60 秒、是否出现 context canceled。 |
 
 ## 日志采集方式
@@ -63,6 +65,7 @@ deepseek generation returned
 deepseek yaml validation succeeded
 deepseek yaml repair succeeded
 convert fallback activated
+convert fallback completed
 screenplay generation completed
 convert request completed
 http request completed
@@ -98,4 +101,5 @@ docs/examples/api-smoke/novel-6chapters-long.md
 - `yaml_length` 是否明显异常
 - 是否出现 YAML repair
 - 是否出现 fallback
+- repair 或 fallback 耗时是否异常
 - 是否出现 60 秒附近的 `context canceled`
