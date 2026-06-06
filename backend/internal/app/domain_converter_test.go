@@ -140,18 +140,109 @@ func TestDomainConverterReturnsProviderRawYAML(t *testing.T) {
 	}
 }
 
+func TestDomainConverterMapsAIInvalidYAMLError(t *testing.T) {
+	provider := recordingProvider{err: ai.YAMLValidationError{
+		Path:    "metadata.title",
+		Message: "metadata.title 不能为空",
+	}}
+	converter := NewDomainConverter(&provider)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+
+	assertAppError(t, err, ErrorCodeAIInvalidYAML, "AI 返回的 YAML 未通过结构校验，请重试。")
+}
+
+func TestDomainConverterMapsAIProviderConfigError(t *testing.T) {
+	provider := recordingProvider{err: ai.ErrDeepSeekAPIKeyRequired}
+	converter := NewDomainConverter(&provider)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+
+	assertAppError(t, err, ErrorCodeAIProviderNotConfigured, "AI provider 配置不完整，请检查 DeepSeek API key、Base URL 和模型配置。")
+}
+
+func TestDomainConverterMapsAIGenerationError(t *testing.T) {
+	provider := recordingProvider{err: errors.New("deepseek api returned status 500")}
+	converter := NewDomainConverter(&provider)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+
+	assertAppError(t, err, ErrorCodeAIGenerationFailed, "AI 生成失败，请稍后重试。")
+}
+
+func TestDomainConverterMapsAITimeoutError(t *testing.T) {
+	provider := recordingProvider{err: context.DeadlineExceeded}
+	converter := NewDomainConverter(&provider)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+
+	assertAppError(t, err, ErrorCodeAITimeout, "AI 生成超时，请稍后重试或调大 DeepSeek 超时时间。")
+}
+
+func TestDomainConverterMapsNetTimeoutError(t *testing.T) {
+	provider := recordingProvider{err: timeoutError{}}
+	converter := NewDomainConverter(&provider)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+
+	assertAppError(t, err, ErrorCodeAITimeout, "AI 生成超时，请稍后重试或调大 DeepSeek 超时时间。")
+}
+
 type recordingProvider struct {
 	called     bool
 	input      ai.GenerateInput
 	screenplay domain.Screenplay
 	rawYAML    string
+	err        error
 }
 
 func (p *recordingProvider) GenerateScreenplay(_ context.Context, input ai.GenerateInput) (ai.GenerateOutput, error) {
 	p.called = true
 	p.input = input
+	if p.err != nil {
+		return ai.GenerateOutput{}, p.err
+	}
 	return ai.GenerateOutput{Screenplay: p.screenplay, RawYAML: p.rawYAML}, nil
 }
+
+func assertAppError(t *testing.T, err error, code, message string) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var appErr *AppError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected AppError, got %T: %v", err, err)
+	}
+	if appErr.Code != code {
+		t.Fatalf("expected code %s, got %s", code, appErr.Code)
+	}
+	if appErr.Message != message {
+		t.Fatalf("expected message %q, got %q", message, appErr.Message)
+	}
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
 
 const sampleConvertNovel = `# 第一章 雨夜来信
 林舟在雨夜收到一封没有署名的信。
