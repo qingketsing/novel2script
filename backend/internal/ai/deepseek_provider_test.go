@@ -266,6 +266,44 @@ func TestDeepSeekProviderGenerateScreenplayRepairsInvalidYAMLOnce(t *testing.T) 
 	}
 }
 
+func TestDeepSeekProviderLogsYAMLRepairMetrics(t *testing.T) {
+	const invalidYAML = "schema_version: \"1.0\""
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	ctx := observability.WithRequestID(observability.WithLogger(context.Background(), logger), "req_repair")
+	provider := DeepSeekProvider{
+		cfg: validDeepSeekConfig(),
+		yamlGenerator: &recordingYAMLGenerator{responses: []yamlGeneratorResponse{
+			{yamlText: invalidYAML},
+			{yamlText: validScreenplayYAML},
+		}},
+	}
+
+	output, err := provider.GenerateScreenplay(ctx, GenerateInput{
+		Novel: samplePromptNovel(),
+	})
+	if err != nil {
+		t.Fatalf("GenerateScreenplay returned error: %v", err)
+	}
+
+	logs := decodeAIJSONLogs(t, logBuffer.String())
+	failed := findAILogMessage(t, logs, "deepseek yaml validation failed")
+	if failed["request_id"] != "req_repair" {
+		t.Fatalf("request_id = %v, want req_repair", failed["request_id"])
+	}
+
+	repaired := findAILogMessage(t, logs, "deepseek yaml repair succeeded")
+	if repaired["request_id"] != "req_repair" {
+		t.Fatalf("repair request_id = %v, want req_repair", repaired["request_id"])
+	}
+	if _, ok := repaired["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in repair log: %+v", repaired)
+	}
+	if repaired["yaml_length"] != float64(len(output.RawYAML)) {
+		t.Fatalf("repair yaml_length = %v, want %d", repaired["yaml_length"], len(output.RawYAML))
+	}
+}
+
 func TestDeepSeekProviderGenerateScreenplayRejectsInvalidYAML(t *testing.T) {
 	provider := DeepSeekProvider{
 		cfg: validDeepSeekConfig(),
