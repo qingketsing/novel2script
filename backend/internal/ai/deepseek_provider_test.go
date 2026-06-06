@@ -1,15 +1,19 @@
 package ai
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/qingketsing/novel2script/backend/internal/domain"
+	"github.com/qingketsing/novel2script/backend/internal/observability"
 )
 
 func TestNewDeepSeekProviderRequiresAPIKey(t *testing.T) {
@@ -117,6 +121,45 @@ func TestDeepSeekProviderGenerateScreenplayReturnsRawYAML(t *testing.T) {
 	if !strings.Contains(generator.prompts[0], "林舟在雨夜收到一封没有署名的信。") {
 		t.Fatalf("expected prompt to include chapter content:\n%s", generator.prompts[0])
 	}
+}
+
+func TestDeepSeekProviderLogsGenerationStages(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	ctx := observability.WithRequestID(observability.WithLogger(context.Background(), logger), "req_ai")
+	generator := &recordingYAMLGenerator{responses: []yamlGeneratorResponse{{yamlText: validScreenplayYAML}}}
+	provider := DeepSeekProvider{
+		cfg:           validDeepSeekConfig(),
+		yamlGenerator: generator,
+	}
+
+	output, err := provider.GenerateScreenplay(ctx, GenerateInput{
+		Novel: samplePromptNovel(),
+	})
+	if err != nil {
+		t.Fatalf("GenerateScreenplay returned error: %v", err)
+	}
+
+	logs := decodeAIJSONLogs(t, logBuffer.String())
+	started := findAILogMessage(t, logs, "deepseek generation started")
+	if started["request_id"] != "req_ai" {
+		t.Fatalf("request_id = %v, want req_ai", started["request_id"])
+	}
+	if started["chapter_count"] != float64(3) {
+		t.Fatalf("chapter_count = %v, want 3", started["chapter_count"])
+	}
+	if _, ok := started["timeout_ms"]; !ok {
+		t.Fatalf("expected timeout_ms in started log: %+v", started)
+	}
+	if _, ok := started["prompt_length"]; !ok {
+		t.Fatalf("expected prompt_length in started log: %+v", started)
+	}
+
+	returned := findAILogMessage(t, logs, "deepseek generation returned")
+	if returned["yaml_length"] != float64(len(output.RawYAML)) {
+		t.Fatalf("yaml_length = %v, want %d", returned["yaml_length"], len(output.RawYAML))
+	}
+	findAILogMessage(t, logs, "deepseek yaml validation succeeded")
 }
 
 func TestDeepSeekProviderUsesMinimumTimeoutForShortNovel(t *testing.T) {
@@ -307,6 +350,36 @@ func (g *recordingYAMLGenerator) GenerateYAML(ctx context.Context, prompt string
 		return "", response.err
 	}
 	return response.yamlText, nil
+}
+
+func decodeAIJSONLogs(t *testing.T, raw string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	logs := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		logs = append(logs, entry)
+	}
+	return logs
+}
+
+func findAILogMessage(t *testing.T, logs []map[string]any, message string) map[string]any {
+	t.Helper()
+
+	for _, entry := range logs {
+		if entry["msg"] == message {
+			return entry
+		}
+	}
+	t.Fatalf("missing log message %q in %+v", message, logs)
+	return nil
 }
 
 func longPromptNovel(chapterCount int, charsPerChapter int) domain.Novel {
