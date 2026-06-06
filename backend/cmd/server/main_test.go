@@ -100,6 +100,47 @@ func TestNewHandlerRejectsMissingDeepSeekAPIKey(t *testing.T) {
 	}
 }
 
+func TestNewHandlerFallsBackToMockWhenDeepSeekConfigMissing(t *testing.T) {
+	server := httptest.NewServer(mustNewHandler(t, config.Config{
+		AIMode:           "deepseek",
+		AIFallbackToMock: true,
+	}))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
+		"title": "雨夜来信",
+		"content": "# 第一章 雨夜来信\n林舟在雨夜收到一封没有署名的信。\n\n# 第二章 旧书店\n林舟来到旧书店，寻找姐姐留下的线索。\n\n# 第三章 街灯\n街灯忽明忽暗，线索指向城市另一端。",
+		"input_type": "md"
+	}`))
+	if err != nil {
+		t.Fatalf("POST /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body app.ConvertResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.Mode != "mock" {
+		t.Fatalf("expected fallback mock mode, got %q", body.Mode)
+	}
+}
+
+func TestNewHandlerRejectsUnknownModeWhenFallbackEnabled(t *testing.T) {
+	_, err := newHandler(config.Config{
+		AIMode:           "unknown",
+		AIFallbackToMock: true,
+	})
+
+	if !errors.Is(err, app.ErrUnsupportedAIMode) {
+		t.Fatalf("error = %v, want %v", err, app.ErrUnsupportedAIMode)
+	}
+}
+
 func TestNewHandlerWiresConfiguredDeepSeekProvider(t *testing.T) {
 	handler, err := newHandler(config.Config{
 		AIMode:          "deepseek",

@@ -203,6 +203,75 @@ func TestDomainConverterMapsNetTimeoutError(t *testing.T) {
 	assertAppError(t, err, ErrorCodeAITimeout, "AI 生成超时，请稍后重试或调大 DeepSeek 超时时间。")
 }
 
+func TestFallbackConverterUsesMockWhenPrimaryFails(t *testing.T) {
+	primary := &recordingConverter{err: NewError(ErrorCodeAIGenerationFailed, "AI 生成失败，请稍后重试。")}
+	fallback := NewMockDomainConverter()
+	converter := NewFallbackConverter(primary, fallback)
+
+	resp, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+	if err != nil {
+		t.Fatalf("Convert returned error: %v", err)
+	}
+
+	if !primary.called {
+		t.Fatal("expected primary converter to be called")
+	}
+	if resp.Mode != "mock" {
+		t.Fatalf("expected fallback mock mode, got %q", resp.Mode)
+	}
+	if resp.ChapterCount != 3 {
+		t.Fatalf("expected 3 chapters, got %d", resp.ChapterCount)
+	}
+	if !strings.Contains(resp.ScreenplayYAML, `mode: "mock"`) {
+		t.Fatalf("expected mock YAML output:\n%s", resp.ScreenplayYAML)
+	}
+}
+
+func TestFallbackConverterReturnsPrimarySuccess(t *testing.T) {
+	const rawYAML = "schema_version: \"1.0\"\n"
+	primary := &recordingConverter{response: ConvertResponse{
+		ScreenplayYAML: rawYAML,
+		ChapterCount:   3,
+		Mode:           "api",
+	}}
+	fallback := &recordingConverter{}
+	converter := NewFallbackConverter(primary, fallback)
+
+	resp, err := converter.Convert(context.Background(), ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+	if err != nil {
+		t.Fatalf("Convert returned error: %v", err)
+	}
+
+	if resp.ScreenplayYAML != rawYAML || resp.Mode != "api" {
+		t.Fatalf("unexpected primary response: %+v", resp)
+	}
+	if fallback.called {
+		t.Fatal("fallback should not be called when primary succeeds")
+	}
+}
+
+func TestFallbackConverterDoesNotHideInputError(t *testing.T) {
+	primaryErr := NewError(ErrCodeInsufficientChapters, "至少需要 3 个章节才能生成剧本初稿。")
+	primary := &recordingConverter{err: primaryErr}
+	fallback := &recordingConverter{}
+	converter := NewFallbackConverter(primary, fallback)
+
+	_, err := converter.Convert(context.Background(), ConvertRequest{})
+
+	if !errors.Is(err, primaryErr) {
+		t.Fatalf("error = %v, want primary error %v", err, primaryErr)
+	}
+	if fallback.called {
+		t.Fatal("fallback should not be called for input validation errors")
+	}
+}
+
 type recordingProvider struct {
 	called     bool
 	input      ai.GenerateInput
@@ -243,6 +312,20 @@ type timeoutError struct{}
 func (timeoutError) Error() string   { return "timeout" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
+
+type recordingConverter struct {
+	called   bool
+	response ConvertResponse
+	err      error
+}
+
+func (c *recordingConverter) Convert(_ context.Context, _ ConvertRequest) (ConvertResponse, error) {
+	c.called = true
+	if c.err != nil {
+		return ConvertResponse{}, c.err
+	}
+	return c.response, nil
+}
 
 const sampleConvertNovel = `# 第一章 雨夜来信
 林舟在雨夜收到一封没有署名的信。
