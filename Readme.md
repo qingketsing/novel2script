@@ -155,6 +155,73 @@ docker compose down
 
 真实 API key 只能放在本地环境变量或本地 `.env` 中，不能提交到仓库。
 
+## Demo Guide
+
+推荐优先使用 Docker mock mode 做现场演示，因为它不依赖真实 API key 和外部模型服务。
+
+### 1. 启动 mock demo
+
+```bash
+docker compose up --build
+```
+
+打开：
+
+```text
+http://localhost:5173
+```
+
+演示步骤：
+
+1. 使用页面中的示例输入，或上传 `docs/examples/novel-example.md`。
+2. 点击生成按钮。
+3. 确认页面返回 YAML。
+4. 确认响应中的 `mode` 为 `mock`。
+5. 复制或下载生成的 YAML。
+
+预期结果：
+
+- 章节数不少于 3。
+- 输出包含 `schema_version`、`metadata`、`characters`、`source_chapters`、`screenplay` 和 `beats`。
+- YAML 可以作为可编辑的剧本初稿继续打磨。
+
+### 2. 启动 DeepSeek API demo
+
+真实 API mode 需要本地提供 `DEEPSEEK_API_KEY`。
+
+macOS / Linux：
+
+```bash
+DEEPSEEK_API_KEY=your_api_key_here docker compose -f docker-compose.yml -f docker-compose.api.yml up --build
+```
+
+PowerShell：
+
+```powershell
+$env:DEEPSEEK_API_KEY="your_api_key_here"
+docker compose -f docker-compose.yml -f docker-compose.api.yml up --build
+```
+
+演示步骤与 mock mode 相同。成功时响应中的 `mode` 应为 `api`。如果真实 API 临时失败，系统可通过 fallback 回到 mock mode，保证现场仍能完成主链路演示。
+
+### 3. 示例文件
+
+仓库内置两个演示文件：
+
+```text
+docs/examples/novel-example.md
+docs/examples/script-example.yaml
+```
+
+`novel-example.md` 是 3 章小说输入样例，适合上传演示。`script-example.yaml` 是结构化剧本 YAML 样例，适合说明最终输出格式。
+
+### 4. 常见问题
+
+- 如果 `http://localhost:5173` 无法打开，先确认 Docker Desktop 已启动，并检查 `docker compose ps`。
+- 如果端口冲突，可以在本地 `.env` 中设置 `FRONTEND_PORT` 或 `BACKEND_PORT`。
+- 如果 API mode 报错，确认 `DEEPSEEK_API_KEY` 已在本地环境变量中设置，且不要把真实 key 提交到仓库。
+- 如果只想稳定演示主链路，使用默认 mock mode 即可。
+
 ## AI 运行配置
 
 默认使用 mock mode，不需要 API key：
