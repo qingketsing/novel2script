@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -125,6 +126,61 @@ func TestCORSHeadersAreSetOnAPIResponse(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 	assertCORSHeaders(t, resp)
+}
+
+func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	server := httptest.NewServer(NewRouterWithLogger(stubConverter{
+		response: app.ConvertResponse{
+			ScreenplayYAML: "schema_version: \"1.0\"\n",
+			ChapterCount:   3,
+			Mode:           "mock",
+		},
+	}, logger))
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
+		"title": "示例小说",
+		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
+		"input_type": "text"
+	}`))
+	if err != nil {
+		t.Fatalf("POST /api/convert failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	logs := decodeJSONLogs(t, logBuffer.String())
+	completed := findLogMessage(t, logs, "convert request completed")
+	if completed["request_id"] == "" {
+		t.Fatalf("expected request_id in convert log: %+v", completed)
+	}
+	if completed["chapter_count"] != float64(3) {
+		t.Fatalf("chapter_count = %v, want 3", completed["chapter_count"])
+	}
+	if completed["mode"] != "mock" {
+		t.Fatalf("mode = %v, want mock", completed["mode"])
+	}
+	if completed["yaml_length"] != float64(len("schema_version: \"1.0\"\n")) {
+		t.Fatalf("yaml_length = %v, want %d", completed["yaml_length"], len("schema_version: \"1.0\"\n"))
+	}
+
+	httpLog := findLogMessage(t, logs, "http request completed")
+	if httpLog["request_id"] != completed["request_id"] {
+		t.Fatalf("http request_id = %v, want %v", httpLog["request_id"], completed["request_id"])
+	}
+	if httpLog["method"] != http.MethodPost {
+		t.Fatalf("method = %v, want POST", httpLog["method"])
+	}
+	if httpLog["path"] != "/api/convert" {
+		t.Fatalf("path = %v, want /api/convert", httpLog["path"])
+	}
+	if httpLog["status"] != float64(http.StatusOK) {
+		t.Fatalf("status = %v, want 200", httpLog["status"])
+	}
+	if _, ok := httpLog["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in http log: %+v", httpLog)
+	}
 }
 
 func TestConvertEndpointReturnsConverterResponse(t *testing.T) {
@@ -496,6 +552,36 @@ func assertCORSHeaders(t *testing.T, resp *http.Response) {
 	if got := resp.Header.Get("Access-Control-Allow-Headers"); !strings.Contains(got, "Content-Type") {
 		t.Fatalf("unexpected allow headers: %q", got)
 	}
+}
+
+func decodeJSONLogs(t *testing.T, raw string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	logs := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		logs = append(logs, entry)
+	}
+	return logs
+}
+
+func findLogMessage(t *testing.T, logs []map[string]any, message string) map[string]any {
+	t.Helper()
+
+	for _, entry := range logs {
+		if entry["msg"] == message {
+			return entry
+		}
+	}
+	t.Fatalf("missing log message %q in %+v", message, logs)
+	return nil
 }
 
 const sampleUploadNovel = `# 第一章 雨夜来信
