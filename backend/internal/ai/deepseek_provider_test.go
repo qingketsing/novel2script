@@ -3,8 +3,10 @@ package ai
 import (
 	"context"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewDeepSeekProviderRequiresAPIKey(t *testing.T) {
@@ -52,6 +54,34 @@ func TestNewDeepSeekProviderReturnsProvider(t *testing.T) {
 	}
 	if provider == nil {
 		t.Fatal("provider is nil, want DeepSeek provider")
+	}
+}
+
+func TestNewDeepSeekProviderPassesTimeoutToClient(t *testing.T) {
+	provider, err := NewDeepSeekProvider(DeepSeekConfig{
+		APIKey:  "test-api-key",
+		BaseURL: "https://api.deepseek.com",
+		Model:   "deepseek-v4",
+		Timeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewDeepSeekProvider() error = %v", err)
+	}
+
+	deepSeekProvider, ok := provider.(DeepSeekProvider)
+	if !ok {
+		t.Fatalf("provider = %T, want DeepSeekProvider", provider)
+	}
+	client, ok := deepSeekProvider.yamlGenerator.(*DeepSeekClient)
+	if !ok {
+		t.Fatalf("yamlGenerator = %T, want *DeepSeekClient", deepSeekProvider.yamlGenerator)
+	}
+	httpClient, ok := client.httpClient.(*http.Client)
+	if !ok {
+		t.Fatalf("httpClient = %T, want *http.Client", client.httpClient)
+	}
+	if httpClient.Timeout != 5*time.Second {
+		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, 5*time.Second)
 	}
 }
 
