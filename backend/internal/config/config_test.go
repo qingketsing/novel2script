@@ -12,6 +12,7 @@ func TestLoadUsesDefaultAISettings(t *testing.T) {
 	t.Setenv("DEEPSEEK_BASE_URL", "")
 	t.Setenv("DEEPSEEK_MODEL", "")
 	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "")
+	t.Setenv("AI_FALLBACK_TO_MOCK", "")
 
 	cfg := Load()
 
@@ -33,6 +34,9 @@ func TestLoadUsesDefaultAISettings(t *testing.T) {
 	if cfg.DeepSeekTimeout != 30*time.Second {
 		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 30*time.Second)
 	}
+	if cfg.AIFallbackToMock {
+		t.Fatal("AIFallbackToMock = true, want false")
+	}
 }
 
 func TestLoadUsesAISettingsFromEnv(t *testing.T) {
@@ -42,6 +46,7 @@ func TestLoadUsesAISettingsFromEnv(t *testing.T) {
 	t.Setenv("DEEPSEEK_BASE_URL", "https://example.test")
 	t.Setenv("DEEPSEEK_MODEL", "deepseek-v4")
 	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "5")
+	t.Setenv("AI_FALLBACK_TO_MOCK", "true")
 
 	cfg := Load()
 
@@ -63,6 +68,9 @@ func TestLoadUsesAISettingsFromEnv(t *testing.T) {
 	if cfg.DeepSeekTimeout != 5*time.Second {
 		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 5*time.Second)
 	}
+	if !cfg.AIFallbackToMock {
+		t.Fatal("AIFallbackToMock = false, want true")
+	}
 }
 
 func TestLoadUsesDefaultDeepSeekTimeoutForInvalidEnv(t *testing.T) {
@@ -72,5 +80,15 @@ func TestLoadUsesDefaultDeepSeekTimeoutForInvalidEnv(t *testing.T) {
 
 	if cfg.DeepSeekTimeout != 30*time.Second {
 		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 30*time.Second)
+	}
+}
+
+func TestLoadUsesFalseForInvalidFallbackEnv(t *testing.T) {
+	t.Setenv("AI_FALLBACK_TO_MOCK", "not-bool")
+
+	cfg := Load()
+
+	if cfg.AIFallbackToMock {
+		t.Fatal("AIFallbackToMock = true, want false")
 	}
 }
