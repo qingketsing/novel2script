@@ -27,7 +27,15 @@ func main() {
 func newHandler(cfg config.Config) (http.Handler, error) {
 	provider, err := app.NewProviderFromConfig(cfg)
 	if err != nil {
+		if cfg.AIFallbackToMock && cfg.AIMode == "deepseek" {
+			return httpapi.NewRouter(app.NewMockDomainConverter()), nil
+		}
 		return nil, err
 	}
-	return httpapi.NewRouter(app.NewDomainConverter(provider)), nil
+
+	converter := app.NewDomainConverter(provider)
+	if cfg.AIFallbackToMock && cfg.AIMode == "deepseek" {
+		converter = app.NewFallbackConverter(converter, app.NewMockDomainConverter())
+	}
+	return httpapi.NewRouter(converter), nil
 }
