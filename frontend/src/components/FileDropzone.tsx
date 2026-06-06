@@ -6,24 +6,30 @@ const ACCEPTED_FILE_TYPES = [".txt", ".md"] as const;
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 
 type FileDropzoneProps = {
+  disabled?: boolean;
   file: File | null;
   isEdited: boolean;
   isReading: boolean;
   onFileChange: (file: File | null, error?: string) => void;
 };
 
-export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDropzoneProps) {
+export function FileDropzone({ disabled = false, file, isEdited, isReading, onFileChange }: FileDropzoneProps) {
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
+  const isDisabled = disabled || isReading;
 
   function handleFileInputChange(event: ChangeEvent<HTMLInputElement>) {
+    if (isDisabled) return;
+
     const selected = event.target.files?.[0] ?? null;
     applyFile(selected, event.currentTarget);
   }
 
   function handleDragOver(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "copy";
+    event.dataTransfer.dropEffect = isDisabled ? "none" : "copy";
+    if (isDisabled) return;
+
     setIsDragging(true);
   }
 
@@ -36,10 +42,14 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
+    if (isDisabled) return;
+
     applyFile(event.dataTransfer.files[0] ?? null);
   }
 
   function applyFile(selected: File | null, input?: HTMLInputElement) {
+    if (isDisabled) return;
+
     if (!selected) {
       onFileChange(null);
       return;
@@ -61,6 +71,8 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
   }
 
   function removeFile() {
+    if (isDisabled) return;
+
     onFileChange(null);
   }
 
@@ -70,7 +82,7 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
         <span className="field-label">上传小说文件</span>
       </div>
       <Label.Root
-        className={dropzoneClassName(isDragging)}
+        className={dropzoneClassName(isDragging, isDisabled)}
         htmlFor={inputId}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -81,14 +93,14 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
           className="sr-only"
           type="file"
           accept={ACCEPTED_FILE_TYPES.join(",")}
-          disabled={isReading}
+          disabled={isDisabled}
           onChange={handleFileInputChange}
         />
         <span className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg font-semibold text-accent">
           +
         </span>
         <span className="mt-3 text-sm font-semibold text-zinc-900">
-          {isReading ? "正在读取文件..." : "拖拽 .txt / .md 到这里，或点击选择文件"}
+          {isReading ? "正在读取文件..." : disabled ? "生成中，暂不可更换文件" : "拖拽 .txt / .md 到这里，或点击选择文件"}
         </span>
         <span className="mt-1 max-w-sm text-sm leading-6 text-zinc-500">
           文件内容会导入上方正文，可编辑后再生成
@@ -106,7 +118,7 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
               {isEdited ? "内容已编辑，将按当前正文生成" : "内容已导入，可在上方编辑"}
             </p>
           </div>
-          <button className="secondary-button shrink-0" type="button" onClick={removeFile}>
+          <button className="secondary-button shrink-0" type="button" onClick={removeFile} disabled={isDisabled}>
             移除文件
           </button>
         </div>
@@ -115,9 +127,13 @@ export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDr
   );
 }
 
-function dropzoneClassName(isDragging: boolean): string {
+function dropzoneClassName(isDragging: boolean, isDisabled: boolean): string {
   const base =
     "flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed px-5 py-8 text-center outline-none transition";
+
+  if (isDisabled) {
+    return `${base} cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-400`;
+  }
 
   return isDragging
     ? `${base} border-accent bg-blue-50 ring-4 ring-blue-100`
