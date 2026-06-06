@@ -3,13 +3,16 @@ import type { ChangeEvent, DragEvent } from "react";
 import { useId, useState } from "react";
 
 const ACCEPTED_FILE_TYPES = [".txt", ".md"] as const;
+const MAX_FILE_SIZE = 2 * 1024 * 1024;
 
 type FileDropzoneProps = {
   file: File | null;
+  isEdited: boolean;
+  isReading: boolean;
   onFileChange: (file: File | null, error?: string) => void;
 };
 
-export function FileDropzone({ file, onFileChange }: FileDropzoneProps) {
+export function FileDropzone({ file, isEdited, isReading, onFileChange }: FileDropzoneProps) {
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
 
@@ -48,6 +51,12 @@ export function FileDropzone({ file, onFileChange }: FileDropzoneProps) {
       return;
     }
 
+    if (selected.size > MAX_FILE_SIZE) {
+      if (input) input.value = "";
+      onFileChange(null, "上传文件不能超过 2MB。");
+      return;
+    }
+
     onFileChange(selected);
   }
 
@@ -72,14 +81,17 @@ export function FileDropzone({ file, onFileChange }: FileDropzoneProps) {
           className="sr-only"
           type="file"
           accept={ACCEPTED_FILE_TYPES.join(",")}
+          disabled={isReading}
           onChange={handleFileInputChange}
         />
         <span className="flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-lg font-semibold text-accent">
           +
         </span>
-        <span className="mt-3 text-sm font-semibold text-zinc-900">拖拽 .txt / .md 到这里，或点击选择文件</span>
+        <span className="mt-3 text-sm font-semibold text-zinc-900">
+          {isReading ? "正在读取文件..." : "拖拽 .txt / .md 到这里，或点击选择文件"}
+        </span>
         <span className="mt-1 max-w-sm text-sm leading-6 text-zinc-500">
-          仅支持单个小说文本文件
+          文件内容会导入上方正文，可编辑后再生成
         </span>
       </Label.Root>
 
@@ -89,6 +101,9 @@ export function FileDropzone({ file, onFileChange }: FileDropzoneProps) {
             <p className="truncate font-medium text-zinc-900">{file.name}</p>
             <p className="mt-1 text-zinc-500">
               {formatFileSize(file.size)} / {file.type || file.name.split(".").pop()?.toUpperCase() || "文本文件"}
+            </p>
+            <p className={`mt-1 ${isEdited ? "text-amber-700" : "text-emerald-700"}`}>
+              {isEdited ? "内容已编辑，将按当前正文生成" : "内容已导入，可在上方编辑"}
             </p>
           </div>
           <button className="secondary-button shrink-0" type="button" onClick={removeFile}>
