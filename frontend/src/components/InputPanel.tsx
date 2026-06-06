@@ -1,14 +1,14 @@
-import { useState } from "react";
 import type { HealthStatus, RequestStatus } from "../types";
 import { FileDropzone } from "./FileDropzone";
 import { HealthBadge } from "./HealthBadge";
-import { ModeSwitchDialog } from "./ModeSwitchDialog";
 
 type InputPanelProps = {
   content: string;
   error: string;
   file: File | null;
   healthStatus: HealthStatus;
+  isFileEdited: boolean;
+  isReadingFile: boolean;
   status: RequestStatus;
   title: string;
   onContentChange: (value: string) => void;
@@ -24,6 +24,8 @@ export function InputPanel({
   error,
   file,
   healthStatus,
+  isFileEdited,
+  isReadingFile,
   status,
   title,
   onContentChange,
@@ -33,31 +35,6 @@ export function InputPanel({
   onLoadSample,
   onTitleChange,
 }: InputPanelProps) {
-  const [pendingContent, setPendingContent] = useState("");
-  const [confirmTextModeOpen, setConfirmTextModeOpen] = useState(false);
-
-  function handleContentChange(value: string) {
-    if (file) {
-      setPendingContent(value);
-      setConfirmTextModeOpen(true);
-      return;
-    }
-
-    onContentChange(value);
-  }
-
-  function confirmTextMode() {
-    onFileChange(null);
-    onContentChange(pendingContent);
-    setPendingContent("");
-    setConfirmTextModeOpen(false);
-  }
-
-  function cancelTextMode() {
-    setPendingContent("");
-    setConfirmTextModeOpen(false);
-  }
-
   return (
     <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/60">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -90,20 +67,28 @@ export function InputPanel({
         <textarea
           className="field min-h-[380px] resize-y font-mono text-sm leading-6"
           value={content}
-          onChange={(event) => handleContentChange(event.target.value)}
+          onChange={(event) => onContentChange(event.target.value)}
           placeholder="粘贴至少 3 个章节，例如：第一章 / 第二章 / 第三章"
         />
       </label>
 
-      <FileDropzone file={file} onFileChange={onFileChange} />
+      <FileDropzone
+        file={file}
+        isEdited={isFileEdited}
+        isReading={isReadingFile}
+        onFileChange={onFileChange}
+      />
 
       {error ? <div className="error-box">{error}</div> : null}
 
-      <button className="primary-button" type="button" onClick={onGenerate} disabled={status === "loading"}>
-        {status === "loading" ? "生成中..." : "生成剧本 YAML"}
+      <button
+        className="primary-button"
+        type="button"
+        onClick={onGenerate}
+        disabled={status === "loading" || isReadingFile}
+      >
+        {isReadingFile ? "正在读取文件..." : status === "loading" ? "生成中..." : "生成剧本 YAML"}
       </button>
-
-      <ModeSwitchDialog open={confirmTextModeOpen} onCancel={cancelTextMode} onConfirm={confirmTextMode} />
     </section>
   );
 }

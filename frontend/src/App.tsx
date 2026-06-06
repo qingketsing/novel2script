@@ -5,7 +5,6 @@ import { ResultPanel } from "./components/ResultPanel";
 import {
   checkBackendHealth,
   convertText,
-  convertUploadedFile,
   errorMessage,
 } from "./lib/api";
 import { countChapters } from "./lib/chapters";
@@ -17,6 +16,8 @@ export function App() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [importedContent, setImportedContent] = useState("");
+  const [isReadingFile, setIsReadingFile] = useState(false);
   const [status, setStatus] = useState<RequestStatus>("idle");
   const [error, setError] = useState("");
   const [result, setResult] = useState<ConvertResponse | null>(null);
@@ -35,19 +36,19 @@ export function App() {
     setCopyState("idle");
 
     const trimmedContent = content.trim();
-    if (!file && trimmedContent.length === 0) {
+    if (trimmedContent.length === 0) {
       setError("请上传 .txt / .md 文件，或粘贴小说正文。");
       return;
     }
 
-    if (!file && countChapters(trimmedContent) < 3) {
+    if (countChapters(trimmedContent) < 3) {
       setError("至少需要 3 个章节才能生成剧本初稿。");
       return;
     }
 
     setStatus("loading");
     try {
-      const response = file ? await convertUploadedFile(title, file) : await convertText(title, trimmedContent);
+      const response = await convertText(title, trimmedContent);
       setResult(response);
     } catch (err: unknown) {
       setError(errorMessage(err));
@@ -89,20 +90,41 @@ export function App() {
 
   function handleContentChange(value: string) {
     setContent(value);
-    setFile(null);
     setResult(null);
   }
 
-  function handleFileChange(nextFile: File | null, nextError = "") {
+  async function handleFileChange(nextFile: File | null, nextError = "") {
     setError(nextError);
     setResult(null);
-    setFile(nextFile);
+    if (!nextFile) {
+      setFile(null);
+      setImportedContent("");
+      return;
+    }
+
+    setIsReadingFile(true);
+    try {
+      const text = await nextFile.text();
+      if (text.trim().length === 0) {
+        setError("上传文件内容不能为空。");
+        return;
+      }
+
+      setFile(nextFile);
+      setImportedContent(text);
+      setContent(text);
+    } catch {
+      setError("读取上传文件失败，请重新选择文件。");
+    } finally {
+      setIsReadingFile(false);
+    }
   }
 
   function loadSampleText() {
     setTitle("雨夜来信");
     setContent(SAMPLE_TEXT);
     setFile(null);
+    setImportedContent("");
     setError("");
     setResult(null);
   }
@@ -118,6 +140,8 @@ export function App() {
             error={error}
             file={file}
             healthStatus={healthStatus}
+            isFileEdited={Boolean(file) && content !== importedContent}
+            isReadingFile={isReadingFile}
             status={status}
             title={title}
             onContentChange={handleContentChange}
