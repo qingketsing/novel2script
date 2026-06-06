@@ -53,8 +53,14 @@ func validateScreenplayDocument(doc screenplayYAML) error {
 	if isBlank(doc.Metadata.GeneratedBy.Provider) {
 		return validationError("metadata.generated_by.provider", "metadata.generated_by.provider 不能为空")
 	}
+	if doc.Metadata.GeneratedBy.Provider != "deepseek-v4" {
+		return validationError("metadata.generated_by.provider", "metadata.generated_by.provider 必须是 deepseek-v4")
+	}
 	if isBlank(doc.Metadata.GeneratedBy.Mode) {
 		return validationError("metadata.generated_by.mode", "metadata.generated_by.mode 不能为空")
+	}
+	if doc.Metadata.GeneratedBy.Mode != "api" {
+		return validationError("metadata.generated_by.mode", "metadata.generated_by.mode 必须是 api")
 	}
 	if len(doc.Characters) == 0 {
 		return validationError("characters", "characters 必须至少包含一个角色")
@@ -66,12 +72,21 @@ func validateScreenplayDocument(doc screenplayYAML) error {
 		return validationError("screenplay.acts", "screenplay.acts 必须至少包含一幕")
 	}
 
+	characterIDs, err := collectCharacterIDs(doc.Characters)
+	if err != nil {
+		return err
+	}
+	sourceChapterIDs, err := collectSourceChapterIDs(doc.SourceChapters)
+	if err != nil {
+		return err
+	}
+
 	for actIndex, act := range doc.Screenplay.Acts {
 		if len(act.Scenes) == 0 {
 			return validationError(fmt.Sprintf("screenplay.acts[%d].scenes", actIndex), "act.scenes 必须至少包含一个场景")
 		}
 		for sceneIndex, scene := range act.Scenes {
-			if err := validateScene(scene, actIndex, sceneIndex); err != nil {
+			if err := validateScene(scene, actIndex, sceneIndex, characterIDs, sourceChapterIDs); err != nil {
 				return err
 			}
 		}
@@ -80,13 +95,48 @@ func validateScreenplayDocument(doc screenplayYAML) error {
 	return nil
 }
 
-func validateScene(scene yamlScene, actIndex, sceneIndex int) error {
+func collectCharacterIDs(characters []yamlCharacter) (map[string]struct{}, error) {
+	ids := make(map[string]struct{}, len(characters))
+	for index, character := range characters {
+		path := fmt.Sprintf("characters[%d].id", index)
+		if isBlank(character.ID) {
+			return nil, validationError(path, "character.id 不能为空")
+		}
+		if _, ok := ids[character.ID]; ok {
+			return nil, validationError(path, "character.id 不能重复")
+		}
+		ids[character.ID] = struct{}{}
+	}
+	return ids, nil
+}
+
+func collectSourceChapterIDs(chapters []yamlSourceChapter) (map[string]struct{}, error) {
+	ids := make(map[string]struct{}, len(chapters))
+	for index, chapter := range chapters {
+		path := fmt.Sprintf("source_chapters[%d].id", index)
+		if isBlank(chapter.ID) {
+			return nil, validationError(path, "source_chapters.id 不能为空")
+		}
+		if _, ok := ids[chapter.ID]; ok {
+			return nil, validationError(path, "source_chapters.id 不能重复")
+		}
+		ids[chapter.ID] = struct{}{}
+	}
+	return ids, nil
+}
+
+func validateScene(scene yamlScene, actIndex, sceneIndex int, characterIDs, sourceChapterIDs map[string]struct{}) error {
 	path := fmt.Sprintf("screenplay.acts[%d].scenes[%d]", actIndex, sceneIndex)
 	if isBlank(scene.ID) {
 		return validationError(path+".id", "scene.id 不能为空")
 	}
 	if len(scene.SourceChapterIDs) == 0 {
 		return validationError(path+".source_chapter_ids", "source_chapter_ids 必须至少包含一个章节 ID")
+	}
+	for index, chapterID := range scene.SourceChapterIDs {
+		if _, ok := sourceChapterIDs[chapterID]; !ok {
+			return validationError(fmt.Sprintf("%s.source_chapter_ids[%d]", path, index), "source_chapter_ids 必须引用已定义章节")
+		}
 	}
 	if isBlank(scene.Heading.Location) {
 		return validationError(path+".heading.location", "heading.location 不能为空")
@@ -100,12 +150,17 @@ func validateScene(scene yamlScene, actIndex, sceneIndex int) error {
 	if scene.Characters == nil {
 		return validationError(path+".characters", "scene.characters 必须是数组")
 	}
+	for index, characterID := range scene.Characters {
+		if _, ok := characterIDs[characterID]; !ok {
+			return validationError(fmt.Sprintf("%s.characters[%d]", path, index), "scene.characters 必须引用已定义角色")
+		}
+	}
 	if len(scene.Beats) == 0 {
 		return validationError(path+".beats", "beats 必须至少包含一个 beat")
 	}
 
 	for beatIndex, beat := range scene.Beats {
-		if err := validateBeat(beat, fmt.Sprintf("%s.beats[%d]", path, beatIndex)); err != nil {
+		if err := validateBeat(beat, fmt.Sprintf("%s.beats[%d]", path, beatIndex), characterIDs); err != nil {
 			return err
 		}
 	}
@@ -113,7 +168,7 @@ func validateScene(scene yamlScene, actIndex, sceneIndex int) error {
 	return nil
 }
 
-func validateBeat(beat yamlBeat, path string) error {
+func validateBeat(beat yamlBeat, path string, characterIDs map[string]struct{}) error {
 	if isBlank(beat.Type) {
 		return validationError(path+".type", "beat.type 不能为空")
 	}
@@ -127,16 +182,21 @@ func validateBeat(beat yamlBeat, path string) error {
 		if isBlank(beat.CharacterID) {
 			return validationError(path+".character_id", "dialogue beat 必须包含 character_id")
 		}
+		if _, ok := characterIDs[beat.CharacterID]; !ok {
+			return validationError(path+".character_id", "dialogue.character_id 必须引用已定义角色")
+		}
 		if isBlank(beat.CharacterName) {
 			return validationError(path+".character_name", "dialogue beat 必须包含 character_name")
 		}
 		if isBlank(beat.Text) {
 			return validationError(path+".text", "dialogue beat 必须包含 text")
 		}
-	default:
+	case "note":
 		if isBlank(beat.Text) {
 			return validationError(path+".text", "beat.text 不能为空")
 		}
+	default:
+		return validationError(path+".type", "beat.type 只能是 action、dialogue 或 note")
 	}
 
 	return nil
@@ -161,9 +221,17 @@ type screenplayYAML struct {
 			Mode     string `yaml:"mode"`
 		} `yaml:"generated_by"`
 	} `yaml:"metadata"`
-	Characters     []struct{}     `yaml:"characters"`
-	SourceChapters []struct{}     `yaml:"source_chapters"`
-	Screenplay     yamlScreenplay `yaml:"screenplay"`
+	Characters     []yamlCharacter     `yaml:"characters"`
+	SourceChapters []yamlSourceChapter `yaml:"source_chapters"`
+	Screenplay     yamlScreenplay      `yaml:"screenplay"`
+}
+
+type yamlCharacter struct {
+	ID string `yaml:"id"`
+}
+
+type yamlSourceChapter struct {
+	ID string `yaml:"id"`
 }
 
 type yamlScreenplay struct {
