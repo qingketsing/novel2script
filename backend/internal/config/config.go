@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+	"time"
+)
 
 type Config struct {
 	Addr            string
@@ -8,6 +12,7 @@ type Config struct {
 	DeepSeekAPIKey  string
 	DeepSeekBaseURL string
 	DeepSeekModel   string
+	DeepSeekTimeout time.Duration
 }
 
 // Load 从环境变量读取服务配置，并提供本地开发默认值。
@@ -32,11 +37,28 @@ func Load() Config {
 		deepSeekModel = "deepseek-v4"
 	}
 
+	deepSeekTimeout := deepSeekTimeoutFromEnv()
+
 	return Config{
 		Addr:            addr,
 		AIMode:          aiMode,
 		DeepSeekAPIKey:  os.Getenv("DEEPSEEK_API_KEY"),
 		DeepSeekBaseURL: deepSeekBaseURL,
 		DeepSeekModel:   deepSeekModel,
+		DeepSeekTimeout: deepSeekTimeout,
 	}
+}
+
+func deepSeekTimeoutFromEnv() time.Duration {
+	const defaultTimeout = 30 * time.Second
+
+	value := os.Getenv("DEEPSEEK_TIMEOUT_SECONDS")
+	if value == "" {
+		return defaultTimeout
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds <= 0 {
+		return defaultTimeout
+	}
+	return time.Duration(seconds) * time.Second
 }

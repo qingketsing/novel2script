@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var (
@@ -15,6 +16,7 @@ type DeepSeekConfig struct {
 	APIKey  string
 	BaseURL string
 	Model   string
+	Timeout time.Duration
 }
 
 type DeepSeekProvider struct {
@@ -37,6 +39,7 @@ func NewDeepSeekProvider(cfg DeepSeekConfig) (Provider, error) {
 		APIKey:  cfg.APIKey,
 		BaseURL: cfg.BaseURL,
 		Model:   cfg.Model,
+		Timeout: cfg.Timeout,
 	}, nil)
 	if err != nil {
 		return nil, err
