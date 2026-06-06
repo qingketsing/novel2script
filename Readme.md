@@ -15,13 +15,12 @@ P0 主链路：
 - 支持上传或粘贴 `.txt` / `.md` 小说文本。
 - 校验输入至少包含 3 个章节。
 - 解析章节、角色、场景和基础情节信息。
-- 使用 AI mock mode 生成结构化剧本。
+- 支持 mock mode 与 DeepSeek API mode 生成结构化剧本。
 - 导出 YAML 格式剧本。
 - 提供干净的前端主链路和明确错误提示。
 
 暂不做：
 
-- 不接入真实大模型 API。
 - 不做复杂在线协同编辑。
 - 不做完整分镜生产系统。
 - 不把输出包装成最终可拍摄剧本。
@@ -30,11 +29,11 @@ P0 主链路：
 
 - 后端语言：Golang。
 - AI provider 设计来源：`deepseek-v4`。
-- MVP 默认模式：mock mode。
+- MVP 默认模式：mock mode，可通过环境变量切换 DeepSeek API mode。
 - 输出格式：YAML。
 - 前端目标：输入、生成、预览、导出四步主链路清晰稳定。
 
-mock mode 的目的不是模拟模型能力上限，而是先验证产品结构、输出契约、错误处理和 demo 链路。等主链路稳定后，再评估真实 API 接入。
+mock mode 的目的不是模拟模型能力上限，而是保证本地开发、自动化测试和比赛 demo 具备稳定 fallback。DeepSeek API mode 用于真实 AI 生成，模型输出会经过 YAML 校验后再返回前端。
 
 ## 结构化输出示例
 
@@ -85,9 +84,100 @@ screenplay:
 1. 准备一段包含 3 个章节以上的小说文本。
 2. 在前端上传 `.txt` / `.md`，或直接粘贴文本。
 3. 系统解析章节并展示基础信息。
-4. 触发 mock AI 生成剧本 YAML。
+4. 触发 mock 或 DeepSeek API 生成剧本 YAML。
 5. 在前端预览结构化结果。
 6. 一键导出 YAML 文件，供作者继续编辑。
+
+## 本地运行
+
+启动后端：
+
+```bash
+go run ./backend/cmd/server
+```
+
+启动前端：
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+默认访问地址：
+
+```text
+前端：http://127.0.0.1:5173/
+后端：http://localhost:8080
+健康检查：http://localhost:8080/health
+```
+
+## AI 运行配置
+
+默认使用 mock mode，不需要 API key：
+
+```bash
+AI_MODE=mock
+```
+
+启用 DeepSeek API mode 时，需要配置：
+
+```bash
+AI_MODE=deepseek
+DEEPSEEK_API_KEY=your_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_TIMEOUT_SECONDS=30
+```
+
+说明：
+
+- `AI_MODE=mock`：稳定 demo fallback，不访问外部模型。
+- `AI_MODE=deepseek`：调用 DeepSeek-compatible chat completions API。
+- `DEEPSEEK_API_KEY`：真实 API key，只能放在本地环境变量中，不能提交到仓库。
+- `DEEPSEEK_BASE_URL`：默认可使用 `https://api.deepseek.com`。
+- `DEEPSEEK_MODEL`：建议本地测试使用 `deepseek-v4-flash`，需要更强生成质量时可切换模型。
+- `DEEPSEEK_TIMEOUT_SECONDS`：DeepSeek 请求超时时间，默认 30 秒。
+
+PowerShell 示例：
+
+```powershell
+$env:AI_MODE="deepseek"
+$env:DEEPSEEK_API_KEY="your_api_key_here"
+$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
+$env:DEEPSEEK_MODEL="deepseek-v4-flash"
+$env:DEEPSEEK_TIMEOUT_SECONDS="30"
+
+go run ./backend/cmd/server
+```
+
+如果使用 `.env` 文件，请只保存在本地，并确认不会提交。当前后端读取的是进程环境变量，不会自动加载 `.env` 文件。
+
+## API Smoke Test
+
+后端启动后，可以用 3 章样例测试生成接口：
+
+```bash
+curl -X POST http://localhost:8080/api/convert \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "雨夜来信",
+    "input_type": "md",
+    "content": "# 第一章 雨夜来信\n林舟在雨夜收到一封没有署名的信。\n\n# 第二章 旧书店\n林舟来到旧书店，寻找姐姐留下的线索。\n\n# 第三章 街灯\n街灯忽明忽暗，线索指向城市另一端。"
+  }'
+```
+
+成功响应会包含：
+
+```json
+{
+  "screenplay_yaml": "schema_version: \"1.0\"\n...",
+  "chapter_count": 3,
+  "mode": "api"
+}
+```
+
+在 mock mode 下，`mode` 会返回 `mock`。
 
 ## 项目文档
 
@@ -98,4 +188,4 @@ screenplay:
 
 ## 当前状态
 
-项目处于文档和产品结构定稿阶段。当前优先事项是先明确任务拆分、YAML Schema、MVP 边界和 demo 叙事，再进入 Golang 后端与前端主链路实现。
+项目已完成 MVP 主链路：前端输入或上传小说文本，后端解析 3 个以上章节，并通过 mock mode 或 DeepSeek API mode 生成结构化剧本 YAML。当前优先事项是继续增强 AI 输出兜底、完善 demo 说明，并打磨前端预览体验。
