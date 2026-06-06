@@ -129,6 +129,11 @@ func TestCORSHeadersAreSetOnAPIResponse(t *testing.T) {
 }
 
 func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
+	const requestBody = `{
+		"title": "示例小说",
+		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
+		"input_type": "text"
+	}`
 	var logBuffer bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
 	server := httptest.NewServer(NewRouterWithLogger(stubConverter{
@@ -140,11 +145,7 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	}, logger))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
-		"title": "示例小说",
-		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
-		"input_type": "text"
-	}`))
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(requestBody))
 	if err != nil {
 		t.Fatalf("POST /api/convert failed: %v", err)
 	}
@@ -154,6 +155,15 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	completed := findLogMessage(t, logs, "convert request completed")
 	if completed["request_id"] == "" {
 		t.Fatalf("expected request_id in convert log: %+v", completed)
+	}
+	if completed["input_type"] != "text" {
+		t.Fatalf("input_type = %v, want text", completed["input_type"])
+	}
+	if completed["content_length"] != float64(len("第一章\n内容\n第二章\n内容\n第三章\n内容")) {
+		t.Fatalf("content_length = %v, want input content length", completed["content_length"])
+	}
+	if completed["title_present"] != true {
+		t.Fatalf("title_present = %v, want true", completed["title_present"])
 	}
 	if completed["chapter_count"] != float64(3) {
 		t.Fatalf("chapter_count = %v, want 3", completed["chapter_count"])
@@ -177,6 +187,9 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	}
 	if httpLog["status"] != float64(http.StatusOK) {
 		t.Fatalf("status = %v, want 200", httpLog["status"])
+	}
+	if httpLog["content_length"] != float64(len(requestBody)) {
+		t.Fatalf("http content_length = %v, want %d", httpLog["content_length"], len(requestBody))
 	}
 	if _, ok := httpLog["duration_ms"]; !ok {
 		t.Fatalf("expected duration_ms in http log: %+v", httpLog)
