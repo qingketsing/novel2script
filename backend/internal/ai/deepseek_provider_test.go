@@ -156,10 +156,17 @@ func TestDeepSeekProviderLogsGenerationStages(t *testing.T) {
 	}
 
 	returned := findAILogMessage(t, logs, "deepseek generation returned")
+	if _, ok := returned["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in returned log: %+v", returned)
+	}
 	if returned["yaml_length"] != float64(len(output.RawYAML)) {
 		t.Fatalf("yaml_length = %v, want %d", returned["yaml_length"], len(output.RawYAML))
 	}
-	findAILogMessage(t, logs, "deepseek yaml validation succeeded")
+
+	validated := findAILogMessage(t, logs, "deepseek yaml validation succeeded")
+	if validated["yaml_length"] != float64(len(output.RawYAML)) {
+		t.Fatalf("validation yaml_length = %v, want %d", validated["yaml_length"], len(output.RawYAML))
+	}
 }
 
 func TestDeepSeekProviderUsesMinimumTimeoutForShortNovel(t *testing.T) {
@@ -256,6 +263,44 @@ func TestDeepSeekProviderGenerateScreenplayRepairsInvalidYAMLOnce(t *testing.T) 
 		if !strings.Contains(repairPrompt, want) {
 			t.Fatalf("expected repair prompt to contain %q:\n%s", want, repairPrompt)
 		}
+	}
+}
+
+func TestDeepSeekProviderLogsYAMLRepairMetrics(t *testing.T) {
+	const invalidYAML = "schema_version: \"1.0\""
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	ctx := observability.WithRequestID(observability.WithLogger(context.Background(), logger), "req_repair")
+	provider := DeepSeekProvider{
+		cfg: validDeepSeekConfig(),
+		yamlGenerator: &recordingYAMLGenerator{responses: []yamlGeneratorResponse{
+			{yamlText: invalidYAML},
+			{yamlText: validScreenplayYAML},
+		}},
+	}
+
+	output, err := provider.GenerateScreenplay(ctx, GenerateInput{
+		Novel: samplePromptNovel(),
+	})
+	if err != nil {
+		t.Fatalf("GenerateScreenplay returned error: %v", err)
+	}
+
+	logs := decodeAIJSONLogs(t, logBuffer.String())
+	failed := findAILogMessage(t, logs, "deepseek yaml validation failed")
+	if failed["request_id"] != "req_repair" {
+		t.Fatalf("request_id = %v, want req_repair", failed["request_id"])
+	}
+
+	repaired := findAILogMessage(t, logs, "deepseek yaml repair succeeded")
+	if repaired["request_id"] != "req_repair" {
+		t.Fatalf("repair request_id = %v, want req_repair", repaired["request_id"])
+	}
+	if _, ok := repaired["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in repair log: %+v", repaired)
+	}
+	if repaired["yaml_length"] != float64(len(output.RawYAML)) {
+		t.Fatalf("repair yaml_length = %v, want %d", repaired["yaml_length"], len(output.RawYAML))
 	}
 }
 

@@ -174,6 +174,12 @@ func TestDomainConverterLogsPipelineStages(t *testing.T) {
 		t.Fatalf("chapter_count = %v, want 3", parsed["chapter_count"])
 	}
 	completed := findAppLogMessage(t, logs, "screenplay generation completed")
+	if _, ok := completed["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in completed log: %+v", completed)
+	}
+	if completed["chapter_count"] != float64(resp.ChapterCount) {
+		t.Fatalf("chapter_count = %v, want %d", completed["chapter_count"], resp.ChapterCount)
+	}
 	if completed["mode"] != resp.Mode {
 		t.Fatalf("mode = %v, want %s", completed["mode"], resp.Mode)
 	}
@@ -301,8 +307,17 @@ func TestFallbackConverterLogsFallbackActivation(t *testing.T) {
 		t.Fatalf("error_code = %v, want %s", entry["error_code"], ErrorCodeAIGenerationFailed)
 	}
 	completed := findAppLogMessage(t, logs, "convert fallback completed")
+	if _, ok := completed["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in fallback completed log: %+v", completed)
+	}
 	if completed["fallback_mode"] != resp.Mode {
 		t.Fatalf("fallback_mode = %v, want %s", completed["fallback_mode"], resp.Mode)
+	}
+	if completed["chapter_count"] != float64(resp.ChapterCount) {
+		t.Fatalf("chapter_count = %v, want %d", completed["chapter_count"], resp.ChapterCount)
+	}
+	if completed["yaml_length"] != float64(len(resp.ScreenplayYAML)) {
+		t.Fatalf("yaml_length = %v, want %d", completed["yaml_length"], len(resp.ScreenplayYAML))
 	}
 }
 

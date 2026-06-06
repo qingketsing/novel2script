@@ -129,6 +129,11 @@ func TestCORSHeadersAreSetOnAPIResponse(t *testing.T) {
 }
 
 func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
+	const requestBody = `{
+		"title": "示例小说",
+		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
+		"input_type": "text"
+	}`
 	var logBuffer bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
 	server := httptest.NewServer(NewRouterWithLogger(stubConverter{
@@ -140,11 +145,7 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	}, logger))
 	defer server.Close()
 
-	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(`{
-		"title": "示例小说",
-		"content": "第一章\n内容\n第二章\n内容\n第三章\n内容",
-		"input_type": "text"
-	}`))
+	resp, err := http.Post(server.URL+"/api/convert", "application/json", strings.NewReader(requestBody))
 	if err != nil {
 		t.Fatalf("POST /api/convert failed: %v", err)
 	}
@@ -154,6 +155,15 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	completed := findLogMessage(t, logs, "convert request completed")
 	if completed["request_id"] == "" {
 		t.Fatalf("expected request_id in convert log: %+v", completed)
+	}
+	if completed["input_type"] != "text" {
+		t.Fatalf("input_type = %v, want text", completed["input_type"])
+	}
+	if completed["content_length"] != float64(len("第一章\n内容\n第二章\n内容\n第三章\n内容")) {
+		t.Fatalf("content_length = %v, want input content length", completed["content_length"])
+	}
+	if completed["title_present"] != true {
+		t.Fatalf("title_present = %v, want true", completed["title_present"])
 	}
 	if completed["chapter_count"] != float64(3) {
 		t.Fatalf("chapter_count = %v, want 3", completed["chapter_count"])
@@ -177,6 +187,9 @@ func TestConvertEndpointWritesRequestLifecycleLogs(t *testing.T) {
 	}
 	if httpLog["status"] != float64(http.StatusOK) {
 		t.Fatalf("status = %v, want 200", httpLog["status"])
+	}
+	if httpLog["content_length"] != float64(len(requestBody)) {
+		t.Fatalf("http content_length = %v, want %d", httpLog["content_length"], len(requestBody))
 	}
 	if _, ok := httpLog["duration_ms"]; !ok {
 		t.Fatalf("expected duration_ms in http log: %+v", httpLog)
@@ -366,6 +379,73 @@ func TestConvertUploadEndpointReturnsConverterResponse(t *testing.T) {
 	}
 	if body.ChapterCount != 3 || body.Mode != "mock" {
 		t.Fatalf("unexpected response: %+v", body)
+	}
+}
+
+func TestConvertUploadEndpointWritesRequestLifecycleLogs(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	server := httptest.NewServer(NewRouterWithLogger(stubConverter{
+		response: app.ConvertResponse{
+			ScreenplayYAML: "schema_version: \"1.0\"\n",
+			ChapterCount:   3,
+			Mode:           "mock",
+		},
+	}, logger))
+	defer server.Close()
+
+	resp, err := postUpload(server.URL+"/api/convert/upload", "novel.md", sampleUploadNovel, "雨夜来信")
+	if err != nil {
+		t.Fatalf("POST /api/convert/upload failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	logs := decodeJSONLogs(t, logBuffer.String())
+	completed := findLogMessage(t, logs, "convert upload request completed")
+	if completed["request_id"] == "" {
+		t.Fatalf("expected request_id in upload convert log: %+v", completed)
+	}
+	if completed["input_type"] != "md" {
+		t.Fatalf("input_type = %v, want md", completed["input_type"])
+	}
+	if completed["content_length"] != float64(len(sampleUploadNovel)) {
+		t.Fatalf("content_length = %v, want %d", completed["content_length"], len(sampleUploadNovel))
+	}
+	if completed["title_present"] != true {
+		t.Fatalf("title_present = %v, want true", completed["title_present"])
+	}
+	if completed["chapter_count"] != float64(3) {
+		t.Fatalf("chapter_count = %v, want 3", completed["chapter_count"])
+	}
+	if completed["mode"] != "mock" {
+		t.Fatalf("mode = %v, want mock", completed["mode"])
+	}
+	if completed["yaml_length"] != float64(len("schema_version: \"1.0\"\n")) {
+		t.Fatalf("yaml_length = %v, want %d", completed["yaml_length"], len("schema_version: \"1.0\"\n"))
+	}
+
+	httpLog := findLogMessage(t, logs, "http request completed")
+	if httpLog["request_id"] != completed["request_id"] {
+		t.Fatalf("http request_id = %v, want %v", httpLog["request_id"], completed["request_id"])
+	}
+	if httpLog["method"] != http.MethodPost {
+		t.Fatalf("method = %v, want POST", httpLog["method"])
+	}
+	if httpLog["path"] != "/api/convert/upload" {
+		t.Fatalf("path = %v, want /api/convert/upload", httpLog["path"])
+	}
+	if httpLog["status"] != float64(http.StatusOK) {
+		t.Fatalf("status = %v, want 200", httpLog["status"])
+	}
+	if contentLength, ok := httpLog["content_length"].(float64); !ok || contentLength <= 0 {
+		t.Fatalf("expected positive http content_length, got %+v", httpLog["content_length"])
+	}
+	if _, ok := httpLog["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in http log: %+v", httpLog)
 	}
 }
 
