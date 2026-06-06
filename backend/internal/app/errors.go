@@ -3,9 +3,13 @@ package app
 import "fmt"
 
 const (
-	ErrorCodeInvalidJSON   = "INVALID_JSON"
-	ErrorCodeInvalidInput  = "INVALID_INPUT"
-	ErrorCodeInternalError = "INTERNAL_ERROR"
+	ErrorCodeInvalidJSON             = "INVALID_JSON"
+	ErrorCodeInvalidInput            = "INVALID_INPUT"
+	ErrorCodeInternalError           = "INTERNAL_ERROR"
+	ErrorCodeAIProviderNotConfigured = "AI_PROVIDER_NOT_CONFIGURED"
+	ErrorCodeAIGenerationFailed      = "AI_GENERATION_FAILED"
+	ErrorCodeAIInvalidYAML           = "AI_INVALID_YAML"
+	ErrorCodeAITimeout               = "AI_TIMEOUT"
 )
 
 type AppError struct {
