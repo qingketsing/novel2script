@@ -174,6 +174,12 @@ func TestDomainConverterLogsPipelineStages(t *testing.T) {
 		t.Fatalf("chapter_count = %v, want 3", parsed["chapter_count"])
 	}
 	completed := findAppLogMessage(t, logs, "screenplay generation completed")
+	if _, ok := completed["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in completed log: %+v", completed)
+	}
+	if completed["chapter_count"] != float64(resp.ChapterCount) {
+		t.Fatalf("chapter_count = %v, want %d", completed["chapter_count"], resp.ChapterCount)
+	}
 	if completed["mode"] != resp.Mode {
 		t.Fatalf("mode = %v, want %s", completed["mode"], resp.Mode)
 	}

@@ -156,10 +156,17 @@ func TestDeepSeekProviderLogsGenerationStages(t *testing.T) {
 	}
 
 	returned := findAILogMessage(t, logs, "deepseek generation returned")
+	if _, ok := returned["duration_ms"]; !ok {
+		t.Fatalf("expected duration_ms in returned log: %+v", returned)
+	}
 	if returned["yaml_length"] != float64(len(output.RawYAML)) {
 		t.Fatalf("yaml_length = %v, want %d", returned["yaml_length"], len(output.RawYAML))
 	}
-	findAILogMessage(t, logs, "deepseek yaml validation succeeded")
+
+	validated := findAILogMessage(t, logs, "deepseek yaml validation succeeded")
+	if validated["yaml_length"] != float64(len(output.RawYAML)) {
+		t.Fatalf("validation yaml_length = %v, want %d", validated["yaml_length"], len(output.RawYAML))
+	}
 }
 
 func TestDeepSeekProviderUsesMinimumTimeoutForShortNovel(t *testing.T) {
