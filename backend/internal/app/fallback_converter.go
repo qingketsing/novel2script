@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+
+	"github.com/qingketsing/novel2script/backend/internal/observability"
 )
 
 type FallbackConverter struct {
@@ -25,7 +27,24 @@ func (c FallbackConverter) Convert(ctx context.Context, req ConvertRequest) (Con
 	if !isAIFallbackError(err) {
 		return ConvertResponse{}, err
 	}
-	return c.fallback.Convert(ctx, req)
+	logger := observability.Logger(ctx)
+	requestID := observability.RequestID(ctx)
+	logger.WarnContext(ctx, "convert fallback activated",
+		"request_id", requestID,
+		"error_code", fallbackErrorCode(err),
+	)
+
+	resp, fallbackErr := c.fallback.Convert(ctx, req)
+	if fallbackErr != nil {
+		return ConvertResponse{}, fallbackErr
+	}
+	logger.InfoContext(ctx, "convert fallback completed",
+		"request_id", requestID,
+		"fallback_mode", resp.Mode,
+		"chapter_count", resp.ChapterCount,
+		"yaml_length", len(resp.ScreenplayYAML),
+	)
+	return resp, nil
 }
 
 func isAIFallbackError(err error) bool {
@@ -42,4 +61,12 @@ func isAIFallbackError(err error) bool {
 	default:
 		return false
 	}
+}
+
+func fallbackErrorCode(err error) string {
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return appErr.Code
+	}
+	return ""
 }
