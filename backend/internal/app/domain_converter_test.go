@@ -1,13 +1,17 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"github.com/qingketsing/novel2script/backend/internal/ai"
 	"github.com/qingketsing/novel2script/backend/internal/domain"
+	"github.com/qingketsing/novel2script/backend/internal/observability"
 )
 
 func TestMockDomainConverterConvertsSuccessfulInput(t *testing.T) {
@@ -140,6 +144,44 @@ func TestDomainConverterReturnsProviderRawYAML(t *testing.T) {
 	}
 }
 
+func TestDomainConverterLogsPipelineStages(t *testing.T) {
+	const rawYAML = "schema_version: \"1.0\"\nmetadata:\n  generated_by:\n    mode: \"api\"\n"
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	ctx := observability.WithRequestID(observability.WithLogger(context.Background(), logger), "req_test")
+	provider := recordingProvider{rawYAML: rawYAML}
+	converter := NewDomainConverter(&provider)
+
+	resp, err := converter.Convert(ctx, ConvertRequest{
+		Title:     "雨夜来信",
+		Content:   sampleConvertNovel,
+		InputType: "text",
+	})
+	if err != nil {
+		t.Fatalf("Convert returned error: %v", err)
+	}
+
+	logs := decodeAppJSONLogs(t, logBuffer.String())
+	started := findAppLogMessage(t, logs, "convert pipeline started")
+	if started["request_id"] != "req_test" {
+		t.Fatalf("request_id = %v, want req_test", started["request_id"])
+	}
+	if started["content_length"] != float64(len(sampleConvertNovel)) {
+		t.Fatalf("content_length = %v, want %d", started["content_length"], len(sampleConvertNovel))
+	}
+	parsed := findAppLogMessage(t, logs, "novel parsed")
+	if parsed["chapter_count"] != float64(3) {
+		t.Fatalf("chapter_count = %v, want 3", parsed["chapter_count"])
+	}
+	completed := findAppLogMessage(t, logs, "screenplay generation completed")
+	if completed["mode"] != resp.Mode {
+		t.Fatalf("mode = %v, want %s", completed["mode"], resp.Mode)
+	}
+	if completed["yaml_length"] != float64(len(rawYAML)) {
+		t.Fatalf("yaml_length = %v, want %d", completed["yaml_length"], len(rawYAML))
+	}
+}
+
 func TestDomainConverterMapsAIInvalidYAMLError(t *testing.T) {
 	provider := recordingProvider{err: ai.YAMLValidationError{
 		Path:    "metadata.title",
@@ -230,6 +272,40 @@ func TestFallbackConverterUsesMockWhenPrimaryFails(t *testing.T) {
 	}
 }
 
+func TestFallbackConverterLogsFallbackActivation(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	ctx := observability.WithRequestID(observability.WithLogger(context.Background(), logger), "req_fallback")
+	primary := &recordingConverter{err: NewError(ErrorCodeAIGenerationFailed, "AI generation failed")}
+	fallback := &recordingConverter{response: ConvertResponse{
+		ScreenplayYAML: "schema_version: \"1.0\"\n",
+		ChapterCount:   3,
+		Mode:           "mock",
+	}}
+	converter := NewFallbackConverter(primary, fallback)
+
+	resp, err := converter.Convert(ctx, ConvertRequest{
+		Title:   "雨夜来信",
+		Content: sampleConvertNovel,
+	})
+	if err != nil {
+		t.Fatalf("Convert returned error: %v", err)
+	}
+
+	logs := decodeAppJSONLogs(t, logBuffer.String())
+	entry := findAppLogMessage(t, logs, "convert fallback activated")
+	if entry["request_id"] != "req_fallback" {
+		t.Fatalf("request_id = %v, want req_fallback", entry["request_id"])
+	}
+	if entry["error_code"] != ErrorCodeAIGenerationFailed {
+		t.Fatalf("error_code = %v, want %s", entry["error_code"], ErrorCodeAIGenerationFailed)
+	}
+	completed := findAppLogMessage(t, logs, "convert fallback completed")
+	if completed["fallback_mode"] != resp.Mode {
+		t.Fatalf("fallback_mode = %v, want %s", completed["fallback_mode"], resp.Mode)
+	}
+}
+
 func TestFallbackConverterReturnsPrimarySuccess(t *testing.T) {
 	const rawYAML = "schema_version: \"1.0\"\n"
 	primary := &recordingConverter{response: ConvertResponse{
@@ -312,6 +388,36 @@ type timeoutError struct{}
 func (timeoutError) Error() string   { return "timeout" }
 func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
+
+func decodeAppJSONLogs(t *testing.T, raw string) []map[string]any {
+	t.Helper()
+
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	logs := make([]map[string]any, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		logs = append(logs, entry)
+	}
+	return logs
+}
+
+func findAppLogMessage(t *testing.T, logs []map[string]any, message string) map[string]any {
+	t.Helper()
+
+	for _, entry := range logs {
+		if entry["msg"] == message {
+			return entry
+		}
+	}
+	t.Fatalf("missing log message %q in %+v", message, logs)
+	return nil
+}
 
 type recordingConverter struct {
 	called   bool
