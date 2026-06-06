@@ -109,16 +109,19 @@ func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input Generate
 			"request_id", requestID,
 			"error", err.Error(),
 		)
+		repairStart := time.Now()
 		repairedYAML, repairErr := p.repairYAML(requestCtx, rawYAML, err)
 		if repairErr != nil {
 			logger.WarnContext(ctx, "deepseek yaml repair failed",
 				"request_id", requestID,
+				"duration_ms", time.Since(repairStart).Milliseconds(),
 				"error", repairErr.Error(),
 			)
 			return GenerateOutput{}, repairErr
 		}
 		logger.InfoContext(ctx, "deepseek yaml repair succeeded",
 			"request_id", requestID,
+			"duration_ms", time.Since(repairStart).Milliseconds(),
 			"yaml_length", len(repairedYAML),
 		)
 		return GenerateOutput{RawYAML: repairedYAML}, nil

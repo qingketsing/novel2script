@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/qingketsing/novel2script/backend/internal/observability"
 )
@@ -34,12 +35,14 @@ func (c FallbackConverter) Convert(ctx context.Context, req ConvertRequest) (Con
 		"error_code", fallbackErrorCode(err),
 	)
 
+	fallbackStart := time.Now()
 	resp, fallbackErr := c.fallback.Convert(ctx, req)
 	if fallbackErr != nil {
 		return ConvertResponse{}, fallbackErr
 	}
 	logger.InfoContext(ctx, "convert fallback completed",
 		"request_id", requestID,
+		"duration_ms", time.Since(fallbackStart).Milliseconds(),
 		"fallback_mode", resp.Mode,
 		"chapter_count", resp.ChapterCount,
 		"yaml_length", len(resp.ScreenplayYAML),
