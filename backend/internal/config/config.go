@@ -7,12 +7,13 @@ import (
 )
 
 type Config struct {
-	Addr            string
-	AIMode          string
-	DeepSeekAPIKey  string
-	DeepSeekBaseURL string
-	DeepSeekModel   string
-	DeepSeekTimeout time.Duration
+	Addr             string
+	AIMode           string
+	DeepSeekAPIKey   string
+	DeepSeekBaseURL  string
+	DeepSeekModel    string
+	DeepSeekTimeout  time.Duration
+	AIFallbackToMock bool
 }
 
 // Load 从环境变量读取服务配置，并提供本地开发默认值。
@@ -38,14 +39,16 @@ func Load() Config {
 	}
 
 	deepSeekTimeout := deepSeekTimeoutFromEnv()
+	aiFallbackToMock := boolFromEnv("AI_FALLBACK_TO_MOCK")
 
 	return Config{
-		Addr:            addr,
-		AIMode:          aiMode,
-		DeepSeekAPIKey:  os.Getenv("DEEPSEEK_API_KEY"),
-		DeepSeekBaseURL: deepSeekBaseURL,
-		DeepSeekModel:   deepSeekModel,
-		DeepSeekTimeout: deepSeekTimeout,
+		Addr:             addr,
+		AIMode:           aiMode,
+		DeepSeekAPIKey:   os.Getenv("DEEPSEEK_API_KEY"),
+		DeepSeekBaseURL:  deepSeekBaseURL,
+		DeepSeekModel:    deepSeekModel,
+		DeepSeekTimeout:  deepSeekTimeout,
+		AIFallbackToMock: aiFallbackToMock,
 	}
 }
 
@@ -61,4 +64,9 @@ func deepSeekTimeoutFromEnv() time.Duration {
 		return defaultTimeout
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func boolFromEnv(name string) bool {
+	value, err := strconv.ParseBool(os.Getenv(name))
+	return err == nil && value
 }
