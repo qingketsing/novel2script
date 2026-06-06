@@ -65,12 +65,12 @@ func TestNewDeepSeekClientUsesDefaultTimeout(t *testing.T) {
 	if !ok {
 		t.Fatalf("httpClient = %T, want *http.Client", client.httpClient)
 	}
-	if httpClient.Timeout != 30*time.Second {
-		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, 30*time.Second)
+	if httpClient.Timeout != deepSeekRequestTimeoutMax {
+		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, deepSeekRequestTimeoutMax)
 	}
 }
 
-func TestNewDeepSeekClientUsesConfiguredTimeout(t *testing.T) {
+func TestNewDeepSeekClientRaisesShortConfiguredTimeout(t *testing.T) {
 	client := mustNewDeepSeekClientWithDoer(t, DeepSeekClientConfig{
 		APIKey:  "test-api-key",
 		BaseURL: "https://api.deepseek.com",
@@ -82,8 +82,8 @@ func TestNewDeepSeekClientUsesConfiguredTimeout(t *testing.T) {
 	if !ok {
 		t.Fatalf("httpClient = %T, want *http.Client", client.httpClient)
 	}
-	if httpClient.Timeout != 5*time.Second {
-		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, 5*time.Second)
+	if httpClient.Timeout != deepSeekRequestTimeoutMax {
+		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, deepSeekRequestTimeoutMax)
 	}
 }
 

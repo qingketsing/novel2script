@@ -3,10 +3,13 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/qingketsing/novel2script/backend/internal/domain"
 )
 
 func TestNewDeepSeekProviderRequiresAPIKey(t *testing.T) {
@@ -57,7 +60,7 @@ func TestNewDeepSeekProviderReturnsProvider(t *testing.T) {
 	}
 }
 
-func TestNewDeepSeekProviderPassesTimeoutToClient(t *testing.T) {
+func TestNewDeepSeekProviderDoesNotLetClientTimeoutUndercutDynamicTimeout(t *testing.T) {
 	provider, err := NewDeepSeekProvider(DeepSeekConfig{
 		APIKey:  "test-api-key",
 		BaseURL: "https://api.deepseek.com",
@@ -80,8 +83,8 @@ func TestNewDeepSeekProviderPassesTimeoutToClient(t *testing.T) {
 	if !ok {
 		t.Fatalf("httpClient = %T, want *http.Client", client.httpClient)
 	}
-	if httpClient.Timeout != 5*time.Second {
-		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, 5*time.Second)
+	if httpClient.Timeout != deepSeekRequestTimeoutMax {
+		t.Fatalf("timeout = %v, want %v", httpClient.Timeout, deepSeekRequestTimeoutMax)
 	}
 }
 
@@ -113,6 +116,63 @@ func TestDeepSeekProviderGenerateScreenplayReturnsRawYAML(t *testing.T) {
 	}
 	if !strings.Contains(generator.prompts[0], "林舟在雨夜收到一封没有署名的信。") {
 		t.Fatalf("expected prompt to include chapter content:\n%s", generator.prompts[0])
+	}
+}
+
+func TestDeepSeekProviderUsesMinimumTimeoutForShortNovel(t *testing.T) {
+	provider := DeepSeekProvider{cfg: validDeepSeekConfig()}
+
+	timeout := provider.timeoutForInput(GenerateInput{Novel: domain.Novel{Title: "短"}})
+
+	if timeout != 45*time.Second {
+		t.Fatalf("timeout = %v, want %v", timeout, 45*time.Second)
+	}
+}
+
+func TestDeepSeekProviderTimeoutScalesWithNovelLength(t *testing.T) {
+	provider := DeepSeekProvider{cfg: validDeepSeekConfig()}
+
+	shortTimeout := provider.timeoutForInput(GenerateInput{Novel: samplePromptNovel()})
+	longTimeout := provider.timeoutForInput(GenerateInput{Novel: longPromptNovel(6, 3200)})
+
+	if longTimeout <= shortTimeout {
+		t.Fatalf("long timeout = %v, want greater than short timeout %v", longTimeout, shortTimeout)
+	}
+	if longTimeout >= deepSeekRequestTimeoutMax {
+		t.Fatalf("long timeout = %v, want below max %v", longTimeout, deepSeekRequestTimeoutMax)
+	}
+}
+
+func TestDeepSeekProviderTimeoutCapsHugeNovel(t *testing.T) {
+	provider := DeepSeekProvider{cfg: validDeepSeekConfig()}
+
+	timeout := provider.timeoutForInput(GenerateInput{Novel: longPromptNovel(20, 30000)})
+
+	if timeout != deepSeekRequestTimeoutMax {
+		t.Fatalf("timeout = %v, want %v", timeout, deepSeekRequestTimeoutMax)
+	}
+}
+
+func TestDeepSeekProviderGenerateScreenplayPassesDynamicDeadline(t *testing.T) {
+	generator := &recordingYAMLGenerator{responses: []yamlGeneratorResponse{{yamlText: validScreenplayYAML}}}
+	provider := DeepSeekProvider{
+		cfg:           validDeepSeekConfig(),
+		yamlGenerator: generator,
+	}
+	input := GenerateInput{Novel: longPromptNovel(6, 3200)}
+
+	_, err := provider.GenerateScreenplay(context.Background(), input)
+	if err != nil {
+		t.Fatalf("GenerateScreenplay returned error: %v", err)
+	}
+	if len(generator.deadlineDurations) != 1 {
+		t.Fatalf("deadline count = %d, want 1", len(generator.deadlineDurations))
+	}
+
+	want := provider.timeoutForInput(input)
+	got := generator.deadlineDurations[0]
+	if got < want-time.Second || got > want {
+		t.Fatalf("deadline duration = %v, want near %v", got, want)
 	}
 }
 
@@ -222,8 +282,9 @@ func validDeepSeekConfig() DeepSeekConfig {
 }
 
 type recordingYAMLGenerator struct {
-	prompts   []string
-	responses []yamlGeneratorResponse
+	prompts           []string
+	deadlineDurations []time.Duration
+	responses         []yamlGeneratorResponse
 }
 
 type yamlGeneratorResponse struct {
@@ -231,8 +292,11 @@ type yamlGeneratorResponse struct {
 	err      error
 }
 
-func (g *recordingYAMLGenerator) GenerateYAML(_ context.Context, prompt string) (string, error) {
+func (g *recordingYAMLGenerator) GenerateYAML(ctx context.Context, prompt string) (string, error) {
 	g.prompts = append(g.prompts, prompt)
+	if deadline, ok := ctx.Deadline(); ok {
+		g.deadlineDurations = append(g.deadlineDurations, time.Until(deadline))
+	}
 	if len(g.responses) == 0 {
 		return "", errors.New("missing yaml generator response")
 	}
@@ -243,4 +307,25 @@ func (g *recordingYAMLGenerator) GenerateYAML(_ context.Context, prompt string) 
 		return "", response.err
 	}
 	return response.yamlText, nil
+}
+
+func longPromptNovel(chapterCount int, charsPerChapter int) domain.Novel {
+	const paragraph = "林川站在雨夜的公交车厢里，反复确认手中的车票和窗外的隧道编号。"
+	repeatCount := charsPerChapter/len([]rune(paragraph)) + 1
+	content := strings.Repeat(paragraph, repeatCount)
+	chapters := make([]domain.Chapter, 0, chapterCount)
+	for i := 1; i <= chapterCount; i++ {
+		chapters = append(chapters, domain.Chapter{
+			ID:      fmt.Sprintf("chapter_%03d", i),
+			Title:   fmt.Sprintf("第%d章 长夜测试", i),
+			Order:   i,
+			Content: content,
+			Summary: "林川继续追查无终点车票背后的秘密。",
+		})
+	}
+	return domain.Novel{
+		Title:    "没有终点的车票",
+		Content:  content,
+		Chapters: chapters,
+	}
 }

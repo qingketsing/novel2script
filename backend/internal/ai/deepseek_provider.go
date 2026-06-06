@@ -4,7 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
+	"unicode/utf8"
+
+	"github.com/qingketsing/novel2script/backend/internal/domain"
+)
+
+const (
+	deepSeekRequestTimeoutMin = 45 * time.Second
+	deepSeekRequestTimeoutMax = 300 * time.Second
+
+	deepSeekTimeoutBaseOverhead = 15 * time.Second
+	deepSeekTimeoutSafetyBuffer = 20 * time.Second
+
+	deepSeekInputTokensPerSecond  = 1500.0
+	deepSeekOutputTokensPerSecond = 40.0
+
+	deepSeekOutputBaseTokens       = 350.0
+	deepSeekOutputTokensPerChapter = 450.0
+	deepSeekOutputInputTokenRatio  = 0.08
 )
 
 var (
@@ -53,13 +72,16 @@ func NewDeepSeekProvider(cfg DeepSeekConfig) (Provider, error) {
 }
 
 func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input GenerateInput) (GenerateOutput, error) {
+	requestCtx, cancel := context.WithTimeout(ctx, p.timeoutForInput(input))
+	defer cancel()
+
 	prompt := BuildScreenplayPrompt(input.Novel)
-	rawYAML, err := p.yamlGenerator.GenerateYAML(ctx, prompt)
+	rawYAML, err := p.yamlGenerator.GenerateYAML(requestCtx, prompt)
 	if err != nil {
 		return GenerateOutput{}, err
 	}
 	if err := ValidateScreenplayYAML(rawYAML); err != nil {
-		repairedYAML, repairErr := p.repairYAML(ctx, rawYAML, err)
+		repairedYAML, repairErr := p.repairYAML(requestCtx, rawYAML, err)
 		if repairErr != nil {
 			return GenerateOutput{}, repairErr
 		}
@@ -67,6 +89,46 @@ func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input Generate
 	}
 
 	return GenerateOutput{RawYAML: rawYAML}, nil
+}
+
+func (p DeepSeekProvider) timeoutForInput(input GenerateInput) time.Duration {
+	inputTokens := estimateNovelTokens(input.Novel)
+	outputTokens := deepSeekOutputBaseTokens +
+		float64(len(input.Novel.Chapters))*deepSeekOutputTokensPerChapter +
+		float64(inputTokens)*deepSeekOutputInputTokenRatio
+
+	inputBudget := secondsForTokens(inputTokens, deepSeekInputTokensPerSecond)
+	outputBudget := secondsForTokens(int(math.Ceil(outputTokens)), deepSeekOutputTokensPerSecond)
+	timeout := deepSeekTimeoutBaseOverhead + inputBudget + outputBudget + deepSeekTimeoutSafetyBuffer
+
+	if p.cfg.Timeout > timeout {
+		timeout = p.cfg.Timeout
+	}
+	if timeout < deepSeekRequestTimeoutMin {
+		return deepSeekRequestTimeoutMin
+	}
+	if timeout > deepSeekRequestTimeoutMax {
+		return deepSeekRequestTimeoutMax
+	}
+	return timeout
+}
+
+func estimateNovelTokens(novel domain.Novel) int {
+	runes := utf8.RuneCountInString(novel.Title) + utf8.RuneCountInString(novel.Content)
+	for _, chapter := range novel.Chapters {
+		runes += utf8.RuneCountInString(chapter.Title)
+		runes += utf8.RuneCountInString(chapter.Summary)
+		runes += utf8.RuneCountInString(chapter.Content)
+	}
+	return runes
+}
+
+func secondsForTokens(tokens int, tokensPerSecond float64) time.Duration {
+	if tokens <= 0 {
+		return 0
+	}
+	seconds := math.Ceil(float64(tokens) / tokensPerSecond)
+	return time.Duration(seconds) * time.Second
 }
 
 func (p DeepSeekProvider) repairYAML(ctx context.Context, rawYAML string, validationErr error) (string, error) {

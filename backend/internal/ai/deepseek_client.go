@@ -46,8 +46,9 @@ func NewDeepSeekClient(cfg DeepSeekClientConfig, httpClient HTTPDoer) (*DeepSeek
 	}
 	if httpClient == nil {
 		timeout := cfg.Timeout
-		if timeout == 0 {
-			timeout = 30 * time.Second
+		// 底层 HTTP 超时不能短于 provider 的动态请求窗口，否则长文会先被 client 截断。
+		if timeout < deepSeekRequestTimeoutMax {
+			timeout = deepSeekRequestTimeoutMax
 		}
 		httpClient = &http.Client{Timeout: timeout}
 	}
