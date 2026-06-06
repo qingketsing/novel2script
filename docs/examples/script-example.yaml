@@ -1,0 +1,115 @@
+schema_version: "1.0"
+metadata:
+  title: "雾港灯塔"
+  source_type: "novel"
+  source_chapter_count: 3
+  language: "zh-CN"
+  generated_by:
+    provider: "deepseek-v4"
+    mode: "mock"
+  created_at: "2026-06-06T00:00:00+08:00"
+characters:
+  - id: "char_001"
+    name: "苏棠"
+    role: "protagonist"
+    description: "寻找失踪哥哥线索的年轻女性，行动果断。"
+  - id: "char_002"
+    name: "陈默"
+    role: "supporting"
+    description: "熟悉旧灯塔设备的维修师，协助苏棠恢复主灯。"
+source_chapters:
+  - id: "chapter_001"
+    title: "第一章 雾中的灯"
+    order: 1
+    summary: "苏棠收到哥哥留下的铜钥匙，并决定前往停用的旧灯塔。"
+  - id: "chapter_002"
+    title: "第二章 潮汐密道"
+    order: 2
+    summary: "苏棠和陈默进入地下机房，发现有人利用浓雾制造航海事故。"
+  - id: "chapter_003"
+    title: "第三章 午夜重燃"
+    order: 3
+    summary: "两人在午夜前修复灯塔，救下货船并找到关键证据。"
+screenplay:
+  acts:
+    - id: "act_001"
+      title: "雾港之夜"
+      order: 1
+      scenes:
+        - id: "scene_001"
+          source_chapter_ids:
+            - "chapter_001"
+          heading:
+            location: "码头修理铺"
+            time: "夜"
+            interior: true
+          summary: "苏棠带着铜钥匙找到陈默，两人确认钥匙来自停用的旧灯塔。"
+          characters:
+            - "char_001"
+            - "char_002"
+          beats:
+            - type: "action"
+              text: "海雾贴在窗外，苏棠把生锈的铜钥匙和半张值班表放到工作台上。"
+            - type: "dialogue"
+              character_id: "char_002"
+              character_name: "陈默"
+              text: "这是地下机房的钥匙，可那里已经断电五年了。"
+            - type: "dialogue"
+              character_id: "char_001"
+              character_name: "苏棠"
+              text: "我哥哥让我在午夜前点亮它，我必须去。"
+            - type: "action"
+              text: "远处的旧灯塔闪过一道微弱白光，陈默立即拿起工具箱。"
+        - id: "scene_002"
+          source_chapter_ids:
+            - "chapter_002"
+          heading:
+            location: "旧灯塔地下机房"
+            time: "深夜"
+            interior: true
+          summary: "两人发现被切断的电缆和苏远留下的录音，确认货船正面临危险。"
+          characters:
+            - "char_001"
+            - "char_002"
+          beats:
+            - type: "action"
+              text: "海水漫过铁门下沿，陈默检查被整齐切断的主灯电缆。"
+            - type: "dialogue"
+              character_id: "char_002"
+              character_name: "陈默"
+              text: "这不是老化，是有人故意切断了线路。"
+            - type: "action"
+              text: "苏棠按下录音机，苏远关于北礁事故的警告在机房里响起。"
+            - type: "dialogue"
+              character_id: "char_001"
+              character_name: "苏棠"
+              text: "你修发电机，我去接主灯。今晚不能再有船撞上北礁。"
+        - id: "scene_003"
+          source_chapter_ids:
+            - "chapter_003"
+          heading:
+            location: "旧灯塔灯室"
+            time: "午夜"
+            interior: true
+          summary: "苏棠和陈默恢复灯塔主灯，使货船避开北礁，并找到苏远留下的证据。"
+          characters:
+            - "char_001"
+            - "char_002"
+          beats:
+            - type: "action"
+              text: "苏棠顶着狂风撬动锈死的转轴，港外货船正逼近北礁。"
+            - type: "dialogue"
+              character_id: "char_002"
+              character_name: "陈默"
+              text: "线路接通了，准备启动！"
+            - type: "action"
+              text: "主灯亮起并穿透海雾，货船拉响汽笛，缓慢转向安全航道。"
+            - type: "dialogue"
+              character_id: "char_001"
+              character_name: "苏棠"
+              text: "哥，你留下的灯，我替你点亮了。"
+            - type: "action"
+              text: "控制台暗格弹开，苏棠取出记录事故航线的文件袋。"
+export:
+  format: "yaml"
+  filename: "fog-harbor-screenplay.yaml"
