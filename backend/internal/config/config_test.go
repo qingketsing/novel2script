@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestLoadUsesDefaultAISettings(t *testing.T) {
 	t.Setenv("HTTP_ADDR", "")
@@ -8,6 +11,7 @@ func TestLoadUsesDefaultAISettings(t *testing.T) {
 	t.Setenv("DEEPSEEK_API_KEY", "")
 	t.Setenv("DEEPSEEK_BASE_URL", "")
 	t.Setenv("DEEPSEEK_MODEL", "")
+	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "")
 
 	cfg := Load()
 
@@ -26,6 +30,9 @@ func TestLoadUsesDefaultAISettings(t *testing.T) {
 	if cfg.DeepSeekModel != "deepseek-v4" {
 		t.Fatalf("DeepSeekModel = %q, want %q", cfg.DeepSeekModel, "deepseek-v4")
 	}
+	if cfg.DeepSeekTimeout != 30*time.Second {
+		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 30*time.Second)
+	}
 }
 
 func TestLoadUsesAISettingsFromEnv(t *testing.T) {
@@ -34,6 +41,7 @@ func TestLoadUsesAISettingsFromEnv(t *testing.T) {
 	t.Setenv("DEEPSEEK_API_KEY", "test-api-key")
 	t.Setenv("DEEPSEEK_BASE_URL", "https://example.test")
 	t.Setenv("DEEPSEEK_MODEL", "deepseek-v4")
+	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "5")
 
 	cfg := Load()
 
@@ -51,5 +59,18 @@ func TestLoadUsesAISettingsFromEnv(t *testing.T) {
 	}
 	if cfg.DeepSeekModel != "deepseek-v4" {
 		t.Fatalf("DeepSeekModel = %q, want %q", cfg.DeepSeekModel, "deepseek-v4")
+	}
+	if cfg.DeepSeekTimeout != 5*time.Second {
+		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 5*time.Second)
+	}
+}
+
+func TestLoadUsesDefaultDeepSeekTimeoutForInvalidEnv(t *testing.T) {
+	t.Setenv("DEEPSEEK_TIMEOUT_SECONDS", "invalid")
+
+	cfg := Load()
+
+	if cfg.DeepSeekTimeout != 30*time.Second {
+		t.Fatalf("DeepSeekTimeout = %v, want %v", cfg.DeepSeekTimeout, 30*time.Second)
 	}
 }
