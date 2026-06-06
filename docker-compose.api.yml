@@ -1,0 +1,9 @@
+services:
+  backend:
+    environment:
+      AI_MODE: deepseek
+      AI_FALLBACK_TO_MOCK: "${AI_FALLBACK_TO_MOCK:-true}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required for DeepSeek API mode}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+      DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-v4-flash}"
+      DEEPSEEK_TIMEOUT_SECONDS: "${DEEPSEEK_TIMEOUT_SECONDS:-30}"

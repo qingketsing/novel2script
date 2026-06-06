@@ -112,6 +112,49 @@ npm run dev
 健康检查：http://localhost:8080/health
 ```
 
+## Docker 一键运行
+
+如果本机已安装 Docker Desktop，可以直接启动前后端 demo。
+
+mock mode：
+
+```bash
+docker compose up --build
+```
+
+默认访问地址：
+
+```text
+前端：http://localhost:5173
+后端：http://localhost:8080
+健康检查：http://localhost:8080/health
+```
+
+默认使用 mock mode，不需要 DeepSeek API key。
+
+DeepSeek API mode：
+
+```bash
+DEEPSEEK_API_KEY=your_api_key_here docker compose -f docker-compose.yml -f docker-compose.api.yml up --build
+```
+
+PowerShell：
+
+```powershell
+$env:DEEPSEEK_API_KEY="your_api_key_here"
+docker compose -f docker-compose.yml -f docker-compose.api.yml up --build
+```
+
+API mode 会显式设置 `AI_MODE=deepseek`，并要求提供 `DEEPSEEK_API_KEY`。默认仍保留 `AI_FALLBACK_TO_MOCK=true`，避免 demo 因真实 API 临时失败而完全中断。
+
+停止服务：
+
+```bash
+docker compose down
+```
+
+真实 API key 只能放在本地环境变量或本地 `.env` 中，不能提交到仓库。
+
 ## AI 运行配置
 
 默认使用 mock mode，不需要 API key：
