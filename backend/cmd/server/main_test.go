@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -90,6 +91,69 @@ func TestNewHandlerConvertsUploadedMarkdownNovel(t *testing.T) {
 	defer resp.Body.Close()
 
 	assertDemoConvertResponse(t, resp)
+}
+
+func TestNewHandlerUploadSmokeCoversMockThreeAndFiveChapterNovels(t *testing.T) {
+	server := httptest.NewServer(mustNewHandler(t, config.Config{AIMode: "mock"}))
+	defer server.Close()
+
+	threeChapterNovel, err := os.ReadFile("../../../docs/examples/novel-example.md")
+	if err != nil {
+		t.Fatalf("read demo novel: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		filename     string
+		content      string
+		wantChapters int
+		requiredYAML []string
+	}{
+		{
+			name:         "three chapter demo novel",
+			filename:     "novel-example.md",
+			content:      string(threeChapterNovel),
+			wantChapters: 3,
+			requiredYAML: []string{
+				`schema_version: "1.0"`,
+				`source_chapter_count: 3`,
+				`characters:`,
+				`source_chapters:`,
+				`screenplay:`,
+				`scene_001`,
+				`chapter_003`,
+				`beats:`,
+			},
+		},
+		{
+			name:         "five chapter demo novel",
+			filename:     "five-chapter-demo.md",
+			content:      fiveChapterMarkdownNovel,
+			wantChapters: 5,
+			requiredYAML: []string{
+				`schema_version: "1.0"`,
+				`source_chapter_count: 5`,
+				`characters:`,
+				`source_chapters:`,
+				`screenplay:`,
+				`scene_005`,
+				`chapter_005`,
+				`beats:`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := postServerUpload(server.URL+"/api/convert/upload", tt.filename, tt.content, "Smoke Demo")
+			if err != nil {
+				t.Fatalf("POST /api/convert/upload failed: %v", err)
+			}
+			defer resp.Body.Close()
+
+			assertUploadSmokeResponse(t, resp, tt.wantChapters, tt.requiredYAML)
+		})
+	}
 }
 
 func TestNewHandlerRejectsMissingDeepSeekAPIKey(t *testing.T) {
@@ -200,6 +264,55 @@ func assertDemoConvertResponse(t *testing.T, resp *http.Response) {
 	}
 }
 
+func postServerUpload(url, filename, content, title string) (*http.Response, error) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("title", title); err != nil {
+		return nil, err
+	}
+	part, err := writer.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := part.Write([]byte(content)); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, &body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return http.DefaultClient.Do(req)
+}
+
+func assertUploadSmokeResponse(t *testing.T, resp *http.Response, wantChapters int, requiredYAML []string) {
+	t.Helper()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body app.ConvertResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body.ChapterCount != wantChapters {
+		t.Fatalf("expected %d chapters, got %d", wantChapters, body.ChapterCount)
+	}
+	if body.Mode != "mock" {
+		t.Fatalf("expected mock mode, got %q", body.Mode)
+	}
+	for _, want := range requiredYAML {
+		if !strings.Contains(body.ScreenplayYAML, want) {
+			t.Fatalf("expected screenplay YAML to contain %q\n%s", want, body.ScreenplayYAML)
+		}
+	}
+}
+
 const demoMarkdownNovel = `# 第一章 雨夜来信
 林舟在雨夜收到一封没有署名的信。
 
@@ -208,3 +321,18 @@ const demoMarkdownNovel = `# 第一章 雨夜来信
 
 # 第三章 街灯
 街灯忽明忽暗，线索指向城市另一端。`
+
+const fiveChapterMarkdownNovel = `# Chapter 1
+The first signal appears beside the old station.
+
+# Chapter 2
+The team follows the signal into the archive room.
+
+# Chapter 3
+A missing ledger reveals who changed the route.
+
+# Chapter 4
+The warning reaches the control desk before midnight.
+
+# Chapter 5
+The final light turns back on and the train slows safely.`
