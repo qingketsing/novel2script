@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/qingketsing/novel2script/backend/internal/ai"
 	"github.com/qingketsing/novel2script/backend/internal/exporter"
+	"github.com/qingketsing/novel2script/backend/internal/observability"
 	"github.com/qingketsing/novel2script/backend/internal/parser"
 	"github.com/qingketsing/novel2script/backend/internal/validation"
 )
@@ -29,36 +32,94 @@ func NewDomainConverter(provider ai.Provider) Converter {
 }
 
 func (c DomainConverter) Convert(ctx context.Context, req ConvertRequest) (ConvertResponse, error) {
+	logger := observability.Logger(ctx)
+	requestID := observability.RequestID(ctx)
+	logger.InfoContext(ctx, "convert pipeline started",
+		"request_id", requestID,
+		"input_type", req.InputType,
+		"content_length", len(req.Content),
+		"title_present", strings.TrimSpace(req.Title) != "",
+	)
+
 	if err := validation.ValidateInput(req.Content); err != nil {
-		return ConvertResponse{}, NewError(err.Code, err.Message)
+		appErr := NewError(err.Code, err.Message)
+		logger.WarnContext(ctx, "convert input validation failed",
+			"request_id", requestID,
+			"error_code", err.Code,
+		)
+		return ConvertResponse{}, appErr
 	}
 
+	parseStart := time.Now()
 	novel, err := parser.ParseNovel(req.Title, req.Content)
 	if err != nil {
+		logger.WarnContext(ctx, "novel parse failed",
+			"request_id", requestID,
+			"duration_ms", time.Since(parseStart).Milliseconds(),
+			"error", err.Error(),
+		)
 		return ConvertResponse{}, err
 	}
 	if err := validation.ValidateNovel(novel); err != nil {
-		return ConvertResponse{}, NewError(err.Code, err.Message)
+		appErr := NewError(err.Code, err.Message)
+		logger.WarnContext(ctx, "novel validation failed",
+			"request_id", requestID,
+			"chapter_count", len(novel.Chapters),
+			"error_code", err.Code,
+		)
+		return ConvertResponse{}, appErr
 	}
+	logger.InfoContext(ctx, "novel parsed",
+		"request_id", requestID,
+		"chapter_count", len(novel.Chapters),
+		"duration_ms", time.Since(parseStart).Milliseconds(),
+	)
 
+	generateStart := time.Now()
+	logger.InfoContext(ctx, "screenplay generation started",
+		"request_id", requestID,
+		"chapter_count", len(novel.Chapters),
+	)
 	output, err := c.provider.GenerateScreenplay(ctx, ai.GenerateInput{Novel: novel})
 	if err != nil {
-		return ConvertResponse{}, mapAIError(err)
+		appErr := mapAIError(err)
+		logger.WarnContext(ctx, "screenplay generation failed",
+			"request_id", requestID,
+			"duration_ms", time.Since(generateStart).Milliseconds(),
+			"error", err.Error(),
+		)
+		return ConvertResponse{}, appErr
 	}
 	if output.RawYAML != "" {
-		return ConvertResponse{
+		resp := ConvertResponse{
 			ScreenplayYAML: output.RawYAML,
 			ChapterCount:   len(novel.Chapters),
 			Mode:           "api",
-		}, nil
+		}
+		logger.InfoContext(ctx, "screenplay generation completed",
+			"request_id", requestID,
+			"duration_ms", time.Since(generateStart).Milliseconds(),
+			"chapter_count", resp.ChapterCount,
+			"mode", resp.Mode,
+			"yaml_length", len(resp.ScreenplayYAML),
+		)
+		return resp, nil
 	}
 	screenplay := output.Screenplay
 
-	return ConvertResponse{
+	resp := ConvertResponse{
 		ScreenplayYAML: exporter.ExportYAML(screenplay),
 		ChapterCount:   len(novel.Chapters),
 		Mode:           screenplay.Mode,
-	}, nil
+	}
+	logger.InfoContext(ctx, "screenplay generation completed",
+		"request_id", requestID,
+		"duration_ms", time.Since(generateStart).Milliseconds(),
+		"chapter_count", resp.ChapterCount,
+		"mode", resp.Mode,
+		"yaml_length", len(resp.ScreenplayYAML),
+	)
+	return resp, nil
 }
 
 func mapAIError(err error) error {

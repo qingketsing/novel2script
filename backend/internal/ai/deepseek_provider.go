@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/qingketsing/novel2script/backend/internal/domain"
+	"github.com/qingketsing/novel2script/backend/internal/observability"
 )
 
 const (
@@ -72,21 +73,60 @@ func NewDeepSeekProvider(cfg DeepSeekConfig) (Provider, error) {
 }
 
 func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input GenerateInput) (GenerateOutput, error) {
-	requestCtx, cancel := context.WithTimeout(ctx, p.timeoutForInput(input))
+	logger := observability.Logger(ctx)
+	requestID := observability.RequestID(ctx)
+	timeout := p.timeoutForInput(input)
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	prompt := BuildScreenplayPrompt(input.Novel)
+	logger.InfoContext(ctx, "deepseek generation started",
+		"request_id", requestID,
+		"chapter_count", len(input.Novel.Chapters),
+		"timeout_ms", timeout.Milliseconds(),
+		"input_tokens_estimate", estimateNovelTokens(input.Novel),
+		"prompt_length", len(prompt),
+	)
+
+	generateStart := time.Now()
 	rawYAML, err := p.yamlGenerator.GenerateYAML(requestCtx, prompt)
 	if err != nil {
+		logger.WarnContext(ctx, "deepseek generation failed",
+			"request_id", requestID,
+			"duration_ms", time.Since(generateStart).Milliseconds(),
+			"error", err.Error(),
+		)
 		return GenerateOutput{}, err
 	}
+	logger.InfoContext(ctx, "deepseek generation returned",
+		"request_id", requestID,
+		"duration_ms", time.Since(generateStart).Milliseconds(),
+		"yaml_length", len(rawYAML),
+	)
+
 	if err := ValidateScreenplayYAML(rawYAML); err != nil {
+		logger.WarnContext(ctx, "deepseek yaml validation failed",
+			"request_id", requestID,
+			"error", err.Error(),
+		)
 		repairedYAML, repairErr := p.repairYAML(requestCtx, rawYAML, err)
 		if repairErr != nil {
+			logger.WarnContext(ctx, "deepseek yaml repair failed",
+				"request_id", requestID,
+				"error", repairErr.Error(),
+			)
 			return GenerateOutput{}, repairErr
 		}
+		logger.InfoContext(ctx, "deepseek yaml repair succeeded",
+			"request_id", requestID,
+			"yaml_length", len(repairedYAML),
+		)
 		return GenerateOutput{RawYAML: repairedYAML}, nil
 	}
+	logger.InfoContext(ctx, "deepseek yaml validation succeeded",
+		"request_id", requestID,
+		"yaml_length", len(rawYAML),
+	)
 
 	return GenerateOutput{RawYAML: rawYAML}, nil
 }
