@@ -21,6 +21,7 @@ func NewProviderFromConfig(cfg config.Config) (ai.Provider, error) {
 			APIKey:  cfg.DeepSeekAPIKey,
 			BaseURL: cfg.DeepSeekBaseURL,
 			Model:   cfg.DeepSeekModel,
+			Timeout: cfg.DeepSeekTimeout,
 		})
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedAIMode, cfg.AIMode)
