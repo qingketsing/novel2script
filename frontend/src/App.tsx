@@ -3,12 +3,15 @@ import { AppHeader } from "./components/AppHeader";
 import { InputPanel } from "./components/InputPanel";
 import { ResultPanel } from "./components/ResultPanel";
 import {
+  BACKEND_CONNECTION_ERROR,
   checkBackendHealth,
   convertText,
   errorMessage,
 } from "./lib/api";
 import { countChapters } from "./lib/chapters";
+import { copyText } from "./lib/clipboard";
 import { downloadTextFile, slugify } from "./lib/download";
+import { generationModeLabel } from "./lib/mode";
 import { SAMPLE_TEXT } from "./lib/sample";
 import type { ConvertResponse, CopyState, HealthStatus, RequestStatus } from "./types";
 
@@ -26,12 +29,14 @@ export function App() {
 
   const estimatedChapterCount = useMemo(() => countChapters(content), [content]);
   const statusLabel = result
-    ? `${result.chapter_count} 章 / ${result.mode} mode`
+    ? `已识别 ${result.chapter_count} 章 / ${generationModeLabel(result.mode)}`
     : estimatedChapterCount > 0
       ? `已识别 ${estimatedChapterCount} 章`
       : "等待输入";
 
   async function handleGenerate() {
+    if (status === "loading") return;
+
     setError("");
     setCopyState("idle");
 
@@ -63,10 +68,10 @@ export function App() {
     try {
       const ok = await checkBackendHealth();
       setHealthStatus(ok ? "ok" : "failed");
-      setError(ok ? "" : "后端不可用，请确认 Go 后端正在 8080 端口运行。");
+      setError(ok ? "" : BACKEND_CONNECTION_ERROR);
     } catch {
       setHealthStatus("failed");
-      setError("后端不可用，请确认 Go 后端正在 8080 端口运行。");
+      setError(BACKEND_CONNECTION_ERROR);
     }
   }
 
@@ -74,7 +79,7 @@ export function App() {
     if (!result?.screenplay_yaml) return;
 
     try {
-      await navigator.clipboard.writeText(result.screenplay_yaml);
+      await copyText(result.screenplay_yaml);
       setCopyState("done");
       window.setTimeout(() => setCopyState("idle"), 1800);
     } catch {

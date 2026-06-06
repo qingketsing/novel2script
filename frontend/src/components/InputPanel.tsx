@@ -35,6 +35,8 @@ export function InputPanel({
   onLoadSample,
   onTitleChange,
 }: InputPanelProps) {
+  const isGenerating = status === "loading";
+
   return (
     <section className="space-y-4 rounded-lg border border-zinc-200 bg-white p-4 shadow-sm shadow-zinc-200/60">
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
@@ -73,6 +75,7 @@ export function InputPanel({
       </label>
 
       <FileDropzone
+        disabled={isGenerating}
         file={file}
         isEdited={isFileEdited}
         isReading={isReadingFile}
@@ -85,9 +88,9 @@ export function InputPanel({
         className="primary-button"
         type="button"
         onClick={onGenerate}
-        disabled={status === "loading" || isReadingFile}
+        disabled={isGenerating || isReadingFile}
       >
-        {isReadingFile ? "正在读取文件..." : status === "loading" ? "生成中..." : "生成剧本 YAML"}
+        {isReadingFile ? "正在读取文件..." : isGenerating ? "正在解析章节并生成剧本..." : "生成剧本 YAML"}
       </button>
     </section>
   );
