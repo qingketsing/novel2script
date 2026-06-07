@@ -49,6 +49,28 @@ func TestValidateScreenplayYAMLRejectsEmptySourceChapters(t *testing.T) {
 	assertValidationError(t, err, "source_chapters", "source_chapters 必须至少包含一个章节")
 }
 
+func TestValidateScreenplayYAMLRejectsSourceChapterCountMismatch(t *testing.T) {
+	yamlText := strings.Replace(validScreenplayYAML, "  source_chapter_count: 3", "  source_chapter_count: 2", 1)
+
+	err := ValidateScreenplayYAML(yamlText)
+
+	assertValidationError(t, err, "metadata.source_chapter_count", "metadata.source_chapter_count 必须与 source_chapters 数量一致")
+}
+
+func TestValidateScreenplayYAMLRejectsInputChapterCountMismatch(t *testing.T) {
+	err := ValidateScreenplayYAMLForChapterCount(validScreenplayYAML, 4)
+
+	assertValidationError(t, err, "metadata.source_chapter_count", "metadata.source_chapter_count 必须与输入章节数量一致")
+}
+
+func TestValidateScreenplayYAMLRejectsUnreferencedSourceChapter(t *testing.T) {
+	yamlText := strings.Replace(validScreenplayYAML, "            - \"chapter_003\"\n", "", 1)
+
+	err := ValidateScreenplayYAML(yamlText)
+
+	assertValidationError(t, err, "source_chapters[2].id", "每个 source chapter 必须至少被一个 scene 引用")
+}
+
 func TestValidateScreenplayYAMLRejectsEmptyActs(t *testing.T) {
 	yamlText := strings.Split(validScreenplayYAML, "screenplay:\n")[0] + "screenplay:\n  acts: []\n"
 
@@ -66,7 +88,11 @@ func TestValidateScreenplayYAMLRejectsSceneMissingID(t *testing.T) {
 }
 
 func TestValidateScreenplayYAMLRejectsSceneMissingSourceChapterIDs(t *testing.T) {
-	yamlText := strings.Replace(validScreenplayYAML, "          source_chapter_ids:\n            - \"chapter_001\"\n", "", 1)
+	yamlText := strings.Replace(validScreenplayYAML, `          source_chapter_ids:
+            - "chapter_001"
+            - "chapter_002"
+            - "chapter_003"
+`, "", 1)
 
 	err := ValidateScreenplayYAML(yamlText)
 
@@ -146,6 +172,14 @@ func TestValidateScreenplayYAMLRejectsDuplicateCharacterID(t *testing.T) {
 	assertValidationError(t, err, "characters[1].id", "character.id 不能重复")
 }
 
+func TestValidateScreenplayYAMLRejectsMissingCharacterName(t *testing.T) {
+	yamlText := strings.Replace(validScreenplayYAML, `    name: "林舟"`+"\n", "", 1)
+
+	err := ValidateScreenplayYAML(yamlText)
+
+	assertValidationError(t, err, "characters[0].name", "character.name 不能为空")
+}
+
 func TestValidateScreenplayYAMLRejectsDuplicateSourceChapterID(t *testing.T) {
 	yamlText := strings.Replace(validScreenplayYAML, sourceChaptersBlock, `source_chapters:
   - id: "chapter_001"
@@ -177,6 +211,14 @@ func TestValidateScreenplayYAMLRejectsUnknownDialogueCharacter(t *testing.T) {
 	err := ValidateScreenplayYAML(yamlText)
 
 	assertValidationError(t, err, "screenplay.acts[0].scenes[0].beats[1].character_id", "dialogue.character_id 必须引用已定义角色")
+}
+
+func TestValidateScreenplayYAMLRejectsDialogueCharacterNameMismatch(t *testing.T) {
+	yamlText := strings.Replace(validScreenplayYAML, `              character_name: "林舟"`, `              character_name: "许岚"`, 1)
+
+	err := ValidateScreenplayYAML(yamlText)
+
+	assertValidationError(t, err, "screenplay.acts[0].scenes[0].beats[1].character_name", "dialogue.character_name 必须与 characters 中对应角色名称一致")
 }
 
 func TestValidateScreenplayYAMLRejectsUnknownSourceChapter(t *testing.T) {
@@ -231,6 +273,14 @@ const sourceChaptersBlock = `source_chapters:
     title: "第一章 雨夜来信"
     order: 1
     summary: "林舟收到信。"
+  - id: "chapter_002"
+    title: "第二章 旧书店"
+    order: 2
+    summary: "林舟寻找线索。"
+  - id: "chapter_003"
+    title: "第三章 街灯"
+    order: 3
+    summary: "林舟确认下一步行动。"
 `
 
 const beatsBlock = `          beats:
@@ -261,6 +311,14 @@ source_chapters:
     title: "第一章 雨夜来信"
     order: 1
     summary: "林舟收到信。"
+  - id: "chapter_002"
+    title: "第二章 旧书店"
+    order: 2
+    summary: "林舟寻找线索。"
+  - id: "chapter_003"
+    title: "第三章 街灯"
+    order: 3
+    summary: "林舟确认下一步行动。"
 screenplay:
   acts:
     - id: "act_001"
@@ -270,6 +328,8 @@ screenplay:
         - id: "scene_001"
           source_chapter_ids:
             - "chapter_001"
+            - "chapter_002"
+            - "chapter_003"
           heading:
             location: "旧书店"
             time: "夜"
