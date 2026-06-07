@@ -2,6 +2,76 @@
 
 最终演示与验收指南：[docs/FINAL_DEMO_GUIDE.md](docs/FINAL_DEMO_GUIDE.md)
 
+演示视频：[https://www.bilibili.com/video/BV1RzEx6jEbg/](https://www.bilibili.com/video/BV1RzEx6jEbg/)
+
+## 快速复现
+
+推荐优先使用 Docker 复现。项目支持两种运行模式：
+
+- `mock mode`：不需要 API key，适合稳定演示主链路。
+- `api mode`：读取本地 `.env` 中的 DeepSeek 配置，调用真实 DeepSeek API。
+
+### 1. Mock Mode
+
+```bash
+docker compose up --build
+```
+
+打开：
+
+```text
+http://localhost:5173
+```
+
+后端健康检查：
+
+```text
+http://localhost:8080/health
+```
+
+### 2. API Mode
+
+在项目根目录创建本地 `.env` 文件：
+
+```env
+AI_MODE=deepseek
+AI_FALLBACK_TO_MOCK=true
+
+DEEPSEEK_API_KEY=your_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_TIMEOUT_SECONDS=30
+
+BACKEND_PORT=8080
+FRONTEND_PORT=5173
+```
+
+然后启动：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.api.yml up --build
+```
+
+Docker Compose 会自动读取根目录 `.env`。真实 API key 只应保存在本地 `.env` 或本机环境变量中，不能提交到仓库。
+
+`.env.example` 提供了可复制的配置模板：
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell 也可以手动复制 `.env.example` 为 `.env` 后再填写 `DEEPSEEK_API_KEY`。
+
+### 3. API Mode 质量验证
+
+API mode 启动后，可以运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\api-mode-quality-smoke.ps1
+```
+
+该脚本会自动验证 3 / 5 / 6 章样例是否返回 `mode=api`、章节数是否正确、YAML 是否包含核心结构字段。
+
 AI 小说转剧本工具，面向希望把小说作品快速改编为剧本初稿的作者、编剧助理和内容团队。
 
 项目目标是降低小说改编剧本的第一步门槛：用户输入 3 个章节以上的小说文本，系统解析章节、角色、场景和情节节点，并生成可编辑、可继续打磨的结构化剧本 YAML。
@@ -263,7 +333,7 @@ $env:DEEPSEEK_TIMEOUT_SECONDS="30"
 go run ./backend/cmd/server
 ```
 
-如果使用 `.env` 文件，请只保存在本地，并确认不会提交。当前后端读取的是进程环境变量，不会自动加载 `.env` 文件。
+如果使用 `.env` 文件，请只保存在本地，并确认不会提交。Docker Compose 会自动读取项目根目录 `.env`；如果直接使用 `go run ./backend/cmd/server`，后端读取的是当前进程环境变量，不会自行加载 `.env`，需要先把变量导入 shell。
 
 ## API Smoke Test
 
