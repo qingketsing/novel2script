@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { InputPanel } from "./components/InputPanel";
 import { ResultPanel } from "./components/ResultPanel";
+import { ScreenplayPreviewPage } from "./components/ScreenplayPreviewPage";
 import {
   BACKEND_CONNECTION_ERROR,
   checkBackendHealth,
@@ -26,6 +27,7 @@ export function App() {
   const [result, setResult] = useState<ConvertResponse | null>(null);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [healthStatus, setHealthStatus] = useState<HealthStatus>("unchecked");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const estimatedChapterCount = useMemo(() => countChapters(content), [content]);
   const statusLabel = result
@@ -55,6 +57,7 @@ export function App() {
     try {
       const response = await convertText(title, trimmedContent);
       setResult(response);
+      setIsPreviewOpen(false);
     } catch (err: unknown) {
       setError(errorMessage(err));
     } finally {
@@ -96,11 +99,13 @@ export function App() {
   function handleContentChange(value: string) {
     setContent(value);
     setResult(null);
+    setIsPreviewOpen(false);
   }
 
   async function handleFileChange(nextFile: File | null, nextError = "") {
     setError(nextError);
     setResult(null);
+    setIsPreviewOpen(false);
     if (!nextFile) {
       setFile(null);
       setImportedContent("");
@@ -132,6 +137,7 @@ export function App() {
     setImportedContent("");
     setError("");
     setResult(null);
+    setIsPreviewOpen(false);
   }
 
   return (
@@ -156,9 +162,24 @@ export function App() {
             onLoadSample={loadSampleText}
             onTitleChange={setTitle}
           />
-          <ResultPanel copyState={copyState} result={result} onCopy={handleCopy} onDownload={handleDownload} />
+          <ResultPanel
+            copyState={copyState}
+            result={result}
+            onCopy={handleCopy}
+            onDownload={handleDownload}
+            onOpenPreview={() => setIsPreviewOpen(true)}
+          />
         </section>
       </div>
+
+      {isPreviewOpen && result?.screenplay_yaml ? (
+        <ScreenplayPreviewPage
+          chapterCount={result.chapter_count}
+          mode={result.mode}
+          yamlText={result.screenplay_yaml}
+          onClose={() => setIsPreviewOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }
