@@ -104,13 +104,14 @@ func (p DeepSeekProvider) GenerateScreenplay(ctx context.Context, input Generate
 		"yaml_length", len(rawYAML),
 	)
 
-	if err := ValidateScreenplayYAML(rawYAML); err != nil {
+	expectedChapterCount := len(input.Novel.Chapters)
+	if err := ValidateScreenplayYAMLForChapterCount(rawYAML, expectedChapterCount); err != nil {
 		logger.WarnContext(ctx, "deepseek yaml validation failed",
 			"request_id", requestID,
 			"error", err.Error(),
 		)
 		repairStart := time.Now()
-		repairedYAML, repairErr := p.repairYAML(requestCtx, rawYAML, err)
+		repairedYAML, repairErr := p.repairYAML(requestCtx, rawYAML, err, expectedChapterCount)
 		if repairErr != nil {
 			logger.WarnContext(ctx, "deepseek yaml repair failed",
 				"request_id", requestID,
@@ -174,13 +175,13 @@ func secondsForTokens(tokens int, tokensPerSecond float64) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-func (p DeepSeekProvider) repairYAML(ctx context.Context, rawYAML string, validationErr error) (string, error) {
+func (p DeepSeekProvider) repairYAML(ctx context.Context, rawYAML string, validationErr error, expectedChapterCount int) (string, error) {
 	repairPrompt := buildYAMLRepairPrompt(rawYAML, validationErr)
 	repairedYAML, err := p.yamlGenerator.GenerateYAML(ctx, repairPrompt)
 	if err != nil {
 		return "", err
 	}
-	if err := ValidateScreenplayYAML(repairedYAML); err != nil {
+	if err := ValidateScreenplayYAMLForChapterCount(repairedYAML, expectedChapterCount); err != nil {
 		return "", err
 	}
 	return repairedYAML, nil
