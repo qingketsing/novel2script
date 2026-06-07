@@ -204,7 +204,7 @@ func TestDeepSeekProviderTimeoutCapsHugeNovel(t *testing.T) {
 }
 
 func TestDeepSeekProviderGenerateScreenplayPassesDynamicDeadline(t *testing.T) {
-	generator := &recordingYAMLGenerator{responses: []yamlGeneratorResponse{{yamlText: validScreenplayYAML}}}
+	generator := &recordingYAMLGenerator{responses: []yamlGeneratorResponse{{yamlText: validScreenplayYAMLForChapterCount(6)}}}
 	provider := DeepSeekProvider{
 		cfg:           validDeepSeekConfig(),
 		yamlGenerator: generator,
@@ -260,6 +260,54 @@ func TestDeepSeekProviderGenerateScreenplayRepairsInvalidYAMLOnce(t *testing.T) 
 		"不要输出 Markdown 代码块",
 	}
 	for _, want := range required {
+		if !strings.Contains(repairPrompt, want) {
+			t.Fatalf("expected repair prompt to contain %q:\n%s", want, repairPrompt)
+		}
+	}
+}
+
+func TestDeepSeekProviderRepairsInconsistentYAMLOnce(t *testing.T) {
+	inconsistentYAML := strings.Replace(
+		validScreenplayYAML,
+		"  source_chapter_count: 3",
+		"  source_chapter_count: 2",
+		1,
+	)
+	inconsistentYAML = strings.Replace(inconsistentYAML, `  - id: "chapter_003"
+    title: "第三章 街灯"
+    order: 3
+    summary: "林舟确认下一步行动。"
+`, "", 1)
+	inconsistentYAML = strings.Replace(inconsistentYAML, "            - \"chapter_003\"\n", "", 1)
+	generator := &recordingYAMLGenerator{responses: []yamlGeneratorResponse{
+		{yamlText: inconsistentYAML},
+		{yamlText: validScreenplayYAML},
+	}}
+	provider := DeepSeekProvider{
+		cfg:           validDeepSeekConfig(),
+		yamlGenerator: generator,
+	}
+
+	output, err := provider.GenerateScreenplay(context.Background(), GenerateInput{
+		Novel: samplePromptNovel(),
+	})
+	if err != nil {
+		t.Fatalf("GenerateScreenplay returned error: %v", err)
+	}
+
+	if output.RawYAML != validScreenplayYAML {
+		t.Fatalf("expected repaired YAML, got:\n%s", output.RawYAML)
+	}
+	if len(generator.prompts) != 2 {
+		t.Fatalf("expected initial call and one repair call, got %d", len(generator.prompts))
+	}
+
+	repairPrompt := generator.prompts[1]
+	for _, want := range []string{
+		"metadata.source_chapter_count",
+		"必须与输入章节数量一致",
+		"只输出 YAML",
+	} {
 		if !strings.Contains(repairPrompt, want) {
 			t.Fatalf("expected repair prompt to contain %q:\n%s", want, repairPrompt)
 		}
@@ -446,4 +494,41 @@ func longPromptNovel(chapterCount int, charsPerChapter int) domain.Novel {
 		Content:  content,
 		Chapters: chapters,
 	}
+}
+
+func validScreenplayYAMLForChapterCount(chapterCount int) string {
+	yamlText := strings.Replace(
+		validScreenplayYAML,
+		"  source_chapter_count: 3",
+		fmt.Sprintf("  source_chapter_count: %d", chapterCount),
+		1,
+	)
+	if chapterCount <= 3 {
+		return yamlText
+	}
+
+	var chapters strings.Builder
+	var chapterReferences strings.Builder
+	for index := 4; index <= chapterCount; index++ {
+		fmt.Fprintf(&chapters, `  - id: "chapter_%03d"
+    title: "第%d章 长夜测试"
+    order: %d
+    summary: "林川继续追查线索。"
+`, index, index, index)
+		fmt.Fprintf(&chapterReferences, "            - \"chapter_%03d\"\n", index)
+	}
+
+	const lastChapter = `  - id: "chapter_003"
+    title: "第三章 街灯"
+    order: 3
+    summary: "林舟确认下一步行动。"
+`
+	yamlText = strings.Replace(yamlText, lastChapter, lastChapter+chapters.String(), 1)
+	yamlText = strings.Replace(
+		yamlText,
+		"            - \"chapter_003\"\n",
+		"            - \"chapter_003\"\n"+chapterReferences.String(),
+		1,
+	)
+	return yamlText
 }
