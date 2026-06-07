@@ -6,9 +6,10 @@ type ResultPanelProps = {
   result: ConvertResponse | null;
   onCopy: () => void;
   onDownload: () => void;
+  onOpenPreview: () => void;
 };
 
-export function ResultPanel({ copyState, result, onCopy, onDownload }: ResultPanelProps) {
+export function ResultPanel({ copyState, result, onCopy, onDownload, onOpenPreview }: ResultPanelProps) {
   const hasYaml = Boolean(result?.screenplay_yaml);
 
   return (
@@ -21,6 +22,9 @@ export function ResultPanel({ copyState, result, onCopy, onDownload }: ResultPan
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button className="secondary-button" type="button" onClick={onOpenPreview} disabled={!hasYaml}>
+            打开剧本预览
+          </button>
           <button className="secondary-button" type="button" onClick={onCopy} disabled={!hasYaml}>
             {copyState === "done" ? "已复制" : "复制 YAML"}
           </button>
